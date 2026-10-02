@@ -1,0 +1,68 @@
+# Herramientas, PostgreSQL y datos exclusivos de esta computadora
+/.local/
+
+# Dependencias y compilaciones del frontend
+node_modules/
+dist/
+dist-ssr/
+*.tsbuildinfo
+.vite/
+
+# Entornos virtuales, compilaciones y cachés de Python
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage/
+
+# Variables de entorno y material privado de autenticación
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.pfx
+*.p12
+
+# Respaldos locales de bases de datos
+*.dump
+*.backup
+*.sql.gz
+*.sql.zip
+
+# Logs y archivos temporales
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+/tmp/
+/temp/
+*.tmp
+*.temp
+~$*
+
+# Preferencias locales de editores y del sistema
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.example.json
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.suo
+*.ntvs*
+*.njsproj
+*.swp
+*.swo
