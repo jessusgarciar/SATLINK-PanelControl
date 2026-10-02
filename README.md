@@ -4,11 +4,15 @@ SATLINK es una plataforma para centralizar, supervisar y visualizar datos de tel
 
 El proyecto utiliza React y TypeScript con Vite en el frontend, y Python con FastAPI y PostgreSQL en el backend. Se organiza con arquitectura limpia para mantener las reglas del dominio y los casos de uso independientes de las herramientas externas.
 
-## Estado inicial
+## Estado actual
 
-Esta etapa prepara las dependencias, el entorno local y las carpetas de trabajo. El frontend conserva únicamente la plantilla generada por Vite, reubicada en la estructura indicada. El backend todavía no tiene una aplicación ejecutable. Las carpetas de arquitectura, protocolos y Scrum están disponibles para documentar el desarrollo.
+El frontend implementa el panel de telemetría, trayectoria GPS, cuatro gráficas, recuperación/predicción y bitácora de comandos, siguiendo el Figma del equipo. Incluye una demostración interactiva claramente identificada y adaptadores HTTP/WebSocket para la estación real.
 
-El stack se revisó contra `Reporte_StackSoftware-PC-Telemetria_SATLINK.pdf`, conservado en la raíz del proyecto. No se implementaron funcionalidades, endpoints, entidades, consultas, codecs ni integraciones. No se instalaron ChirpStack, broker MQTT ni predictor local.
+La implementación respeta el stack y la separación de capas del repositorio. Se revisó contra `Reporte_StackSoftware-PC-Telemetria_SATLINK.pdf`. El backend aún no tiene aplicación ejecutable: la integración real requiere implementar el [contrato del frontend](docs/protocols/frontend-api-v1.md). La demostración no conecta con hardware, MQTT, ChirpStack ni Tawhiri.
+
+- [Guía del frontend](frontend/README.md): ejecución, configuración y recorrido de la interfaz.
+- [Arquitectura y decisiones de Figma](docs/architecture/frontend.md).
+- [Entrega, validación y subida a GitHub](docs/frontend-delivery.md).
 
 ## Requisitos
 
@@ -26,15 +30,16 @@ npm ci
 npm run dev
 ```
 
-Vite indicará la dirección local del servidor. La interfaz que aparece es la plantilla de Vite. Para detenerla, usa `Ctrl+C`.
+Vite indicará la dirección local del servidor. El panel inicia en modo **DEMOSTRACIÓN**, con datos de ejemplo y comandos simulados. Para detenerla, usa `Ctrl+C`.
 
 ```powershell
+npm test
 npm run build
 npm run lint
 npm ls --depth=0
 ```
 
-`build` verifica TypeScript y genera archivos en `dist`; `lint` revisa el código; `npm ls` muestra las versiones instaladas. `package.json` fija versiones directas y `package-lock.json` conserva la resolución completa. Leaflet tiene sus tipos en `@types/leaflet`; React Leaflet, ECharts y echarts-for-react incluyen sus propios tipos. Fetch y WebSocket son APIs nativas y no agregan paquetes.
+`test` ejecuta las pruebas de dominio, controlador y transportes; `build` verifica TypeScript y genera archivos en `dist`; `lint` revisa el código; `npm ls` muestra las versiones instaladas. `package.json` fija versiones directas y `package-lock.json` conserva la resolución completa. Leaflet tiene sus tipos en `@types/leaflet`; React Leaflet, ECharts y echarts-for-react incluyen sus propios tipos. Fetch y WebSocket son APIs nativas y no agregan paquetes.
 
 ## Instalar y activar el backend
 
@@ -150,10 +155,10 @@ El árbol muestra las carpetas de trabajo; además existen manifiestos, archivos
 
 `domain` aloja conceptos y contratos independientes de herramientas. `application` coordina casos de uso mediante puertos. `infrastructure` aloja adaptadores para HTTP, WebSocket, PostgreSQL, MQTT y servicios externos. `presentation` aloja las interfaces de usuario y API. `app` en el frontend y `bootstrap` en el backend componen las capas.
 
-Las reglas de dependencia se explican en [Arquitectura](docs/architecture/README.md). Las carpetas [Scrum](docs/scrum/README.md) guardarán backlog, documentación de sprints, reviews, retrospectivas y criterios de terminado; por ahora no contienen historias, estimaciones ni planes de sprint. `docs/protocols` se reserva para contratos de comunicación y `scripts` para herramientas futuras del equipo.
+Las reglas de dependencia se explican en [Arquitectura](docs/architecture/README.md). Las carpetas [Scrum](docs/scrum/README.md) guardarán backlog, documentación de sprints, reviews, retrospectivas y criterios de terminado; por ahora no contienen historias, estimaciones ni planes de sprint. `docs/protocols` contiene el contrato propuesto del panel y un ejemplo de snapshot; `scripts` se reserva para herramientas del equipo.
 
 ## Verificación y pendientes
 
 La preparación del repositorio, exclusiones y pasos para revisar un commit están en [Preparación para Git](docs/setup/git.md). Las reglas se mantienen desde la raíz en `.gitignore`, `.gitattributes` y `.editorconfig`.
 
-Las versiones instaladas y los resultados se registran en [Entorno verificado](docs/setup/environment.md). Quedan para etapas posteriores el desarrollo de la aplicación y la API, las migraciones, las integraciones y la documentación Scrum acordada por el equipo. Esta preparación no valida conexiones MQTT, Tawhiri ni tráfico de telemetría.
+Las versiones instaladas y los resultados se registran en [Entorno verificado](docs/setup/environment.md). El frontend está implementado y su validación se detalla en la guía de entrega. Quedan pendientes la API FastAPI, autenticación/roles, migraciones, integraciones y documentación Scrum acordada por el equipo. Las pruebas del cliente no validan conexiones MQTT, Tawhiri ni tráfico de radio real.

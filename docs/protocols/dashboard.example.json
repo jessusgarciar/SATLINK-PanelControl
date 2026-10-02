@@ -1,0 +1,88 @@
+{
+  "mission": {
+    "id": "satlink-001",
+    "name": "SATLINK · Ejemplo sintético",
+    "updatedAt": "2026-10-02T04:10:38.082Z",
+    "startedAt": "2026-10-02T04:10:38.082Z",
+    "endedAt": null,
+    "phase": "ascending",
+    "launch": {
+      "latitude": 21.88535,
+      "longitude": -102.29167,
+      "altitudeM": 1870
+    },
+    "launchLabel": "AGS · Origen de ejemplo",
+    "targetRelativeAltitudeM": 15000,
+    "nominalAscentMs": 5,
+    "nominalDescentMs": 6.5,
+    "watchdogSeconds": 3300,
+    "staleAfterSeconds": 15,
+    "deviceEui": "0000000000000000",
+    "region": "US915",
+    "beaconOn": false
+  },
+  "telemetry": [
+    {
+      "id": "demo-154",
+      "missionId": "satlink-001",
+      "receivedAt": "2026-10-02T04:13:12.082Z",
+      "frameCounter": 154,
+      "latitude": 21.886274,
+      "longitude": -102.289976,
+      "altitudeGpsM": 2640,
+      "relativeAltitudeM": 770,
+      "altitudeBarometricM": 2638.0462925793354,
+      "temperatureC": 17.373807966274395,
+      "humidityPct": 55.46426482693776,
+      "pressureHpa": 733.816788263316,
+      "batteryV": 4.122715340355201,
+      "rssiDbm": -85,
+      "snrDb": 7.922284955554268,
+      "verticalSpeedMs": 5.006155371742992
+    },
+    {
+      "id": "demo-155",
+      "missionId": "satlink-001",
+      "receivedAt": "2026-10-02T04:13:13.082Z",
+      "frameCounter": 155,
+      "latitude": 21.88628,
+      "longitude": -102.289965,
+      "altitudeGpsM": 2645,
+      "relativeAltitudeM": 775,
+      "altitudeBarometricM": 2643.0211544750023,
+      "temperatureC": 17.262668801722537,
+      "humidityPct": 55.451945561241125,
+      "pressureHpa": 733.3544203799322,
+      "batteryV": 4.1158550115260875,
+      "rssiDbm": -86,
+      "snrDb": 8.095962354676935,
+      "verticalSpeedMs": 5.004158066243329
+    },
+    {
+      "id": "demo-156",
+      "missionId": "satlink-001",
+      "receivedAt": "2026-10-02T04:13:14.082Z",
+      "frameCounter": 156,
+      "latitude": 21.886286,
+      "longitude": -102.289954,
+      "altitudeGpsM": 2650,
+      "relativeAltitudeM": 780,
+      "altitudeBarometricM": 2648.005708755048,
+      "temperatureC": 17.23182153811852,
+      "humidityPct": 55.440524477172715,
+      "pressureHpa": 732.8922884175478,
+      "batteryV": 4.1222915269355,
+      "rssiDbm": -86,
+      "snrDb": 8.285747459704112,
+      "verticalSpeedMs": 5.002159097572609
+    }
+  ],
+  "commands": [],
+  "events": [],
+  "prediction": null,
+  "permissions": {
+    "canCommand": false,
+    "canPredict": false
+  },
+  "csrfToken": null
+}
