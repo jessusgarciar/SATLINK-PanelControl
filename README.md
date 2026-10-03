@@ -8,7 +8,7 @@ El proyecto utiliza React y TypeScript con Vite en el frontend, y Python con Fas
 
 El frontend implementa el panel de telemetría, trayectoria GPS, cuatro gráficas, recuperación/predicción y bitácora de comandos, siguiendo el Figma del equipo. Incluye una demostración interactiva claramente identificada y adaptadores HTTP/WebSocket para la estación real.
 
-La implementación respeta el stack y la separación de capas del repositorio. Se revisó contra `Reporte_StackSoftware-PC-Telemetria_SATLINK.pdf`. El backend aún no tiene aplicación ejecutable: la integración real requiere implementar el [contrato del frontend](docs/protocols/frontend-api-v1.md). La demostración no conecta con hardware, MQTT, ChirpStack ni Tawhiri.
+El backend implementa telemetría e historial del Ejercicio 09: validación del payload de 19 bytes, persistencia PostgreSQL, snapshot HTTP, historial paginado y WebSocket posterior al commit. Esta etapa funciona en localhost, sin login y sin permisos para telecomandos o predicción. La demostración del frontend sigue separada de la estación real. Consulta la [guía de ejecución del backend](docs/setup/backend.md) y el [protocolo PICARO FULL](docs/protocols/picaro-full-v1.md).
 
 - [Guía del frontend](frontend/README.md): ejecución, configuración y recorrido de la interfaz.
 - [Arquitectura y decisiones de Figma](docs/architecture/frontend.md).
@@ -66,11 +66,11 @@ Si PowerShell bloquea la activación, se puede utilizar el intérprete directame
 
 `requirements.txt` declara dependencias directas y sus extras; `requirements.lock.txt` fija también las transitivas del entorno Windows/Python 3.13 verificado. `uvicorn[standard]` incluye soporte WebSocket, `SQLAlchemy[asyncio]` instala su soporte asíncrono y `psycopg[binary]` aporta el controlador y libpq sin compilación local. Para salir del entorno activado, ejecuta `deactivate`.
 
-Todavía no hay módulo FastAPI que ejecutar ni configuración de Alembic; las carpetas correspondientes están preparadas. En Windows, aiomqtt requerirá un bucle de eventos que soporte `add_reader` cuando se implemente su integración. Esta etapa comprobó importaciones y disponibilidad de `SelectorEventLoop`, sin conectarse a MQTT.
+Desde `backend`, configura `.env`, ejecuta `python -m alembic upgrade head`, completa una copia local de `mission.example.json` y registra la misión con `python -m app.bootstrap.cli init-mission --file mission.local.json`. Inicia con `python -m app.bootstrap.cli serve`. La CLI configura `SelectorEventLoop` en Windows y un único proceso en `127.0.0.1`. Los valores obligatorios del ejemplo deben sustituirse por datos reales; MQTT permanece deshabilitado hasta configurarlo explícitamente.
 
 ## PostgreSQL local
 
-La instalación preparada escucha únicamente en `127.0.0.1:5433`, usa UTC y contiene la base vacía `satlink_dev`. La autenticación SSPI vincula la cuenta Windows que preparó el entorno con el rol local `satlink_dev`, sin guardar contraseñas. Los binarios, datos y configuración particulares de esta computadora quedan en `.local`, excluida del control de versiones.
+La instalación preparada escucha únicamente en `127.0.0.1:5433` y usa UTC. La base `satlink_dev` se reserva a desarrollo; las pruebas usan exclusivamente una base cuyo nombre termina en `_test`. La autenticación SSPI vincula la cuenta Windows que preparó el entorno con el rol local `satlink_dev`, sin guardar contraseñas. Los binarios, datos y configuración particulares de esta computadora quedan en `.local`, excluida del control de versiones.
 
 Para iniciar PostgreSQL desde la raíz:
 
@@ -161,4 +161,4 @@ Las reglas de dependencia se explican en [Arquitectura](docs/architecture/README
 
 La preparación del repositorio, exclusiones y pasos para revisar un commit están en [Preparación para Git](docs/setup/git.md). Las reglas se mantienen desde la raíz en `.gitignore`, `.gitattributes` y `.editorconfig`.
 
-Las versiones instaladas y los resultados se registran en [Entorno verificado](docs/setup/environment.md). El frontend está implementado y su validación se detalla en la guía de entrega. Quedan pendientes la API FastAPI, autenticación/roles, migraciones, integraciones y documentación Scrum acordada por el equipo. Las pruebas del cliente no validan conexiones MQTT, Tawhiri ni tráfico de radio real.
+Las versiones instaladas se registran en [Entorno verificado](docs/setup/environment.md). La entrega actual se documenta en [Telemetría](docs/features/telemetry.md), [Historial](docs/features/history.md) y [Verificación PICARO](docs/features/picaro-verification.md). Quedan pendientes autenticación para acceso compartido, telecomandos, predicción Tawhiri y validación con hardware. Las pruebas sintéticas no acreditan recepción de radio ni vuelo real. No se implementaron cambios de firmware.

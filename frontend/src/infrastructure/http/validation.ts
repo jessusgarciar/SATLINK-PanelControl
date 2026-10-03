@@ -1,4 +1,4 @@
-import { validPredictionParameters } from '../../domain/mission.ts'
+import { MAX_TARGET_RELATIVE_ALTITUDE_M, validPredictionParameters } from '../../domain/mission.ts'
 import type {
   Command,
   CommandStatus,
@@ -93,7 +93,7 @@ export function parseMission(value: unknown): Mission {
     ]),
     launch: position(m.launch),
     launchLabel: str(m.launchLabel),
-    targetRelativeAltitudeM: between(m.targetRelativeAltitudeM, 1000, 30000),
+    targetRelativeAltitudeM: between(m.targetRelativeAltitudeM, 1000, MAX_TARGET_RELATIVE_ALTITUDE_M),
     nominalAscentMs: between(m.nominalAscentMs, 1, 10),
     nominalDescentMs: between(m.nominalDescentMs, 1, 15),
     watchdogSeconds: between(m.watchdogSeconds, 1, 86400),
@@ -117,9 +117,9 @@ export function parseTelemetry(value: unknown): Telemetry {
     frameCounter,
     latitude: gpsValid ? latitude : null,
     longitude: gpsValid ? longitude : null,
-    altitudeGpsM: sensor(t.altitudeGpsM, 0, 65534),
+    altitudeGpsM: sensor(t.altitudeGpsM, -500, 65534),
     altitudeBarometricM: sensor(t.altitudeBarometricM, -500, 65534),
-    relativeAltitudeM: sensor(t.relativeAltitudeM, -500, 65534),
+    relativeAltitudeM: sensor(t.relativeAltitudeM, -66034, 65534),
     verticalSpeedMs: sensor(t.verticalSpeedMs, -200, 200),
     temperatureC: sensor(t.temperatureC, -127, 127),
     humidityPct: sensor(t.humidityPct, 0, 100),

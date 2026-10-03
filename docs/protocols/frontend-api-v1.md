@@ -1,15 +1,15 @@
 # Contrato propuesto del panel SATLINK
 
-Estado: implementado en el cliente, pendiente de implementar y acordar con el equipo de FastAPI. El repositorio base no tenía endpoints. Este documento no afirma que exista una conexión operativa con ChirpStack, MQTT, PostgreSQL, Tawhiri o la cápsula.
+Estado: snapshot, stream e historial implementados en FastAPI para telemetría PICARO FULL de 19 bytes. La etapa actual es exclusivamente local y de lectura. Los apartados de comandos, predicción y sesión de operador describen contratos futuros; no están habilitados. La verificación con hardware permanece pendiente.
 
 ## Transporte y sesión
 
 - Base HTTP: `/api/v1`. WebSocket: mismo origen, con `ws` en desarrollo y `wss` bajo HTTPS.
-- Sesión del operador mediante cookie `HttpOnly`, `Secure` en producción y política `SameSite` apropiada. La creación/cierre de sesión pertenecen al backend; el frontend no inventa un login.
+- Excepción de esta etapa: acceso exclusivo desde loopback y orígenes locales permitidos, sin login, `canCommand=false`, `canPredict=false`, `csrfToken=null`. Para acceso compartido se requerirá sesión del operador mediante cookie `HttpOnly`, `Secure` en producción y política `SameSite` apropiada. La creación/cierre de sesión pertenecen al backend.
 - Fetch usa `credentials: include`. Los POST incluyen `X-CSRF-Token`, obtenido del snapshot. FastAPI debe validar sesión, rol, pertenencia a misión, origen y CSRF. Ocultar/deshabilitar botones no es autorización.
 - No incluir credenciales de MQTT, PostgreSQL ni ChirpStack en variables `VITE_*`.
 - Fechas RFC3339 con zona horaria explícita, preferentemente UTC `Z`. El panel presenta hora local del navegador y usa la hora de recepción como eje de telemetría.
-- JSON de aplicación; el límite de 11 bytes se aplica al payload de radio, no a HTTP/WebSocket.
+- JSON de aplicación. El perfil de radio actual utiliza 19 bytes y fPort 10, descritos en [PICARO FULL v1](picaro-full-v1.md); no se aplica el antiguo borrador compacto de 11 bytes.
 
 ## Operaciones
 
@@ -17,10 +17,11 @@ Estado: implementado en el cliente, pendiente de implementar y acordar con el eq
 | --------- | ------------------------------------- | ------------------------------------------- |
 | GET       | `/missions/{id}/dashboard?limit=1200` | `DashboardSnapshot`                         |
 | WebSocket | `/missions/{id}/stream`               | Mensajes discriminados por `type`           |
+| GET       | `/missions/{id}/telemetry`           | `{items, nextCursor}`; historial paginado     |
 | POST      | `/missions/{id}/commands`             | `Command` registrado, normalmente `pending` |
 | POST      | `/missions/{id}/predictions`          | Última `Prediction` calculada               |
 
-No hay otras rutas supuestas. Si el equipo decide otro contrato, se cambian los adaptadores de `infrastructure`; dominio y componentes quedan independientes de esas URLs.
+Los POST de comandos/predicciones aún no existen en el backend y devuelven 404. El historial acepta `from`, `to` RFC3339 con zona, intervalo `[from,to)`, `cursor` opaco y `limit` de 1–1200 (predeterminado 200). Ordena por `(receivedAt,id)` ascendente y devuelve `nextCursor=null` al terminar. Se deben conservar los filtros entre páginas; cursor malformado o ajeno a los filtros produce 422. El snapshot devuelve las últimas muestras, con límite predeterminado 1200. No se agregó pantalla de historial en el frontend.
 
 ## Snapshot
 
@@ -58,7 +59,9 @@ Fases: `preflight`, `ascending`, `descending`, `landed`, `unknown`. El backend/f
 | `batteryV`              | V, no porcentaje de carga inferido                                                  |
 | `rssiDbm`, `snrDb`      | dBm y dB, metadatos de ChirpStack                                                   |
 
-Todos los campos numéricos de sensores admiten `null`. El adaptador normaliza a `null` los sensores ausentes, no finitos o fuera del rango del payload v1. Los valores reservados deben decodificarse en backend antes de emitir JSON; nunca se sustituyen por cero. La presión binaria 255, por ejemplo, no debe enviarse como 255 hPa: el frontend no puede distinguir un sentinel no decodificado de una presión física válida.
+Todos los campos numéricos de sensores admiten `null`. El adaptador normaliza a `null` sensores ausentes, no finitos o fuera del rango del perfil. En PICARO FULL la presión es uint16/10, sin sentinel 255: **255 hPa es válido**. El porcentaje de batería 255 es desconocido y permanece en metadatos internos; no reemplaza al voltaje. Sin fix GPS, coordenadas y altitud GPS son `null`. La humedad no viaja en este perfil; barométrica y velocidad vertical todavía no se calculan. Las tres son `null`.
+
+El objetivo configurable máximo es 15 000 m relativos. Las mediciones que excedan esa altura no se recortan. El GPS admite altitudes negativas hasta −500 m; la altura relativa puede ser negativa respecto al origen persistente. No se infieren fase, liberación o aterrizaje de estas muestras: la fase inicial es `unknown`.
 
 El cliente almacena hasta 1200 muestras y dibuja hasta 600 por gráfica. Ordena por `receivedAt`, deduplica por ID y no desplaza la lectura actual cuando llega un paquete anterior. La deduplicación persistente por dispositivo/sesión/evento y el archivo histórico completo son responsabilidad del backend.
 

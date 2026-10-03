@@ -7,9 +7,11 @@ import {
   latestSample,
   mergeCommands,
   mergeTelemetry,
+  validPredictionParameters,
 } from '../src/domain/mission.ts'
 import {
   parseMessage,
+  parseMission,
   parseSnapshot,
   parseTelemetry,
 } from '../src/infrastructure/http/validation.ts'
@@ -95,6 +97,34 @@ test('invalid sensor values are unavailable, never zero or a valid GPS fix', () 
     /zona horaria/,
   )
   assert.throws(() => parseTelemetry({ ...sample, frameCounter: 1.5 }), /Contador/)
+})
+
+test('flight targets stop at 15000 relative meters without hiding measured exceedances', () => {
+  assert.equal(parseMission(fixture.mission).targetRelativeAltitudeM, 15000)
+  assert.throws(() => parseMission({ ...fixture.mission, targetRelativeAltitudeM: 15001 }), /rango/)
+  assert.equal(validPredictionParameters({ ...fixture.prediction.parameters, targetRelativeAltitudeM: 15000 }), true)
+  assert.equal(validPredictionParameters({ ...fixture.prediction.parameters, targetRelativeAltitudeM: 15001 }), false)
+  const observed = parseTelemetry({ ...sample, altitudeGpsM: 18000, relativeAltitudeM: 16130 })
+  assert.equal(observed.altitudeGpsM, 18000)
+  assert.equal(observed.relativeAltitudeM, 16130)
+})
+
+test('negative GPS altitude and descent below launch remain measurable; missing values stay null', () => {
+  const observed = parseTelemetry({ ...sample, altitudeGpsM: -100, relativeAltitudeM: -1970 })
+  assert.equal(observed.altitudeGpsM, -100)
+  assert.equal(observed.relativeAltitudeM, -1970)
+  assert.equal(parseTelemetry({ ...sample, altitudeGpsM: -501 }).altitudeGpsM, null)
+  const absent = parseTelemetry({
+    ...sample, latitude: null, longitude: -102, altitudeGpsM: null, relativeAltitudeM: null,
+    temperatureC: null, pressureHpa: null, batteryV: null,
+  })
+  for (const field of ['latitude', 'longitude', 'altitudeGpsM', 'relativeAltitudeM', 'temperatureC', 'pressureHpa', 'batteryV'])
+    assert.equal(absent[field], null)
+  const zero = parseTelemetry({ ...sample, latitude: 0, longitude: 0, altitudeGpsM: 0, temperatureC: 0 })
+  assert.equal(zero.latitude, 0)
+  assert.equal(zero.longitude, 0)
+  assert.equal(zero.altitudeGpsM, 0)
+  assert.equal(zero.temperatureC, 0)
 })
 test('duplicates and late packets do not move the latest value backwards', () => {
   const first = { ...sample, id: 'old', receivedAt: '2026-10-01T12:00:00Z' }

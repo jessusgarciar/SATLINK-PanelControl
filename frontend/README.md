@@ -38,7 +38,7 @@ SATLINK_BACKEND_ORIGIN=http://127.0.0.1:8000
 
 Reinicia Vite después de cambiar variables. El proxy `/api` admite HTTP y WebSocket. `VITE_*` es configuración pública del navegador, nunca un lugar para credenciales. `SATLINK_BACKEND_ORIGIN` solo configura el proxy de desarrollo.
 
-El backend debe implementar el [contrato documentado](../docs/protocols/frontend-api-v1.md): snapshot, stream, comandos y predicción. Sesión por cookie, permisos y token CSRF se proporcionan desde FastAPI. Sin permisos, el panel funciona en lectura. Los datos derivados, la decodificación de radio y los cálculos meteorológicos corresponden al backend.
+El backend implementa snapshot, stream e historial paginado del [contrato documentado](../docs/protocols/frontend-api-v1.md). En esta etapa local no necesita login, entrega permisos de escritura en `false` y `csrfToken=null`. Comandos y predicción permanecen pendientes. El panel funciona en lectura; la altura relativa se calcula en backend. El perfil de 19 bytes no transmite humedad y todavía no calcula velocidad vertical ni altitud barométrica: se muestran como desconocidas. Los objetivos configurables tienen un máximo de 15 000 m relativos; las mediciones que lo superen permanecen visibles.
 
 El proveedor de mapa puede cambiarse con `VITE_TILE_URL` y su atribución obligatoria en `VITE_TILE_ATTRIBUTION`. Una URL vacía desactiva las solicitudes de mapa base. Se incluye la atribución de OpenStreetMap; respeta las condiciones de tu proveedor al desplegar.
 

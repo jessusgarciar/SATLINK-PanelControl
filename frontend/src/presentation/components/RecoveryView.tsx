@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState } from 'react'
 import type { MissionController, MissionState } from '../../application/MissionController.ts'
 import type { PredictionParameters } from '../../domain/mission.ts'
-import { distanceKm, latestSample } from '../../domain/mission.ts'
+import { distanceKm, latestSample, MAX_TARGET_RELATIVE_ALTITUDE_M } from '../../domain/mission.ts'
 import { ageLabel, clock, dateTime, duration, km, number } from '../format.ts'
 import type { MapSettings } from './MissionMap.tsx'
 import { Definition, Dialog, PhaseChip, RangeInput, SectionTitle } from './ui.tsx'
@@ -58,7 +58,7 @@ export default function RecoveryView({
       key: 'targetRelativeAltitudeM' as const,
       label: 'Altitud de liberación · relativa',
       min: 1000,
-      max: 30000,
+      max: MAX_TARGET_RELATIVE_ALTITUDE_M,
       step: 500,
       unit: 'm',
     },

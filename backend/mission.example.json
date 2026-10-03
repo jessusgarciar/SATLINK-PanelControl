@@ -1,0 +1,15 @@
+{
+  "id": "satlink-001",
+  "name": "REEMPLAZAR POR NOMBRE DE MISION",
+  "source": "chirpstack-local",
+  "applicationId": "REEMPLAZAR_APPLICATION_ID",
+  "deviceEui": "REEMPLAZAR_DEVEUI",
+  "launch": {"latitude": null, "longitude": null, "altitudeM": null},
+  "launchLabel": "REEMPLAZAR SITIO DE LANZAMIENTO",
+  "targetRelativeAltitudeM": 15000,
+  "nominalAscentMs": null,
+  "nominalDescentMs": null,
+  "watchdogSeconds": null,
+  "staleAfterSeconds": null,
+  "region": "US915"
+}

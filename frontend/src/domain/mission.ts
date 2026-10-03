@@ -108,6 +108,7 @@ export type MissionMessage =
   | { type: 'prediction'; data: Prediction }
 
 export const MAX_TELEMETRY = 1200
+export const MAX_TARGET_RELATIVE_ALTITUDE_M = 15000
 export function mergeTelemetry(
   current: Telemetry[],
   incoming: Telemetry[],
@@ -183,7 +184,7 @@ export function validPredictionParameters(p: PredictionParameters): boolean {
   return (
     Number.isFinite(p.targetRelativeAltitudeM) &&
     p.targetRelativeAltitudeM >= 1000 &&
-    p.targetRelativeAltitudeM <= 30000 &&
+    p.targetRelativeAltitudeM <= MAX_TARGET_RELATIVE_ALTITUDE_M &&
     Number.isFinite(p.ascentRateMs) &&
     p.ascentRateMs >= 1 &&
     p.ascentRateMs <= 10 &&
