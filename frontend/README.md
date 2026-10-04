@@ -40,6 +40,8 @@ Reinicia Vite después de cambiar variables. El proxy `/api` admite HTTP y WebSo
 
 El backend implementa snapshot, stream e historial paginado del [contrato documentado](../docs/protocols/frontend-api-v1.md). En esta etapa local no necesita login, entrega permisos de escritura en `false` y `csrfToken=null`. Comandos y predicción permanecen pendientes. El panel funciona en lectura; la altura relativa se calcula en backend. El perfil de 19 bytes no transmite humedad y todavía no calcula velocidad vertical ni altitud barométrica: se muestran como desconocidas. Los objetivos configurables tienen un máximo de 15 000 m relativos; las mediciones que lo superen permanecen visibles.
 
+Separa el estado MQTT del backend de la conexión WebSocket del navegador, incorpora datos de dispositivo/radio y permite consultar ventanas de 15 minutos, 1 hora, 6 horas, 24 horas o todo el historial. Las gráficas y trayectoria pueden reducir puntos; el CSV contiene todas las filas del intervalo. La reproducción histórica a 1×/5×/10× conserva fechas originales y deshabilita escrituras; no mezcla el stream en vivo con el historial. La bitácora técnica conserva hasta 100 entradas de la sesión y es distinta de la bitácora de comandos. Consulta [Dashboard y conexión ChirpStack](../docs/features/dashboard-chirpstack.md).
+
 El proveedor de mapa puede cambiarse con `VITE_TILE_URL` y su atribución obligatoria en `VITE_TILE_ATTRIBUTION`. Una URL vacía desactiva las solicitudes de mapa base. Se incluye la atribución de OpenStreetMap; respeta las condiciones de tu proveedor al desplegar.
 
 ## Verificar y compilar

@@ -70,8 +70,38 @@ class TelemetryDTO(DTO):
     batteryV: Annotated[float, Field(ge=0, le=5.08)] | None
     rssiDbm: Annotated[float, Field(ge=-200, le=20)] | None
     snrDb: Annotated[float, Field(ge=-40, le=40)] | None
+    device: "DeviceDTO | None" = None
+    radio: "RadioDTO | None" = None
 
     @field_validator("receivedAt")
+    @classmethod
+    def timestamp(cls, value: str) -> str:
+        utc_time(value)
+        return value
+
+
+class DeviceDTO(DTO):
+    gpsActive: bool | None
+    gpsFix: bool | None
+    satellites: Annotated[int, Field(ge=0, le=255)] | None
+    batteryPct: Annotated[int, Field(ge=0, le=100)] | None
+    charging: bool | None
+    usbPowered: bool | None
+
+
+class RadioDTO(DTO):
+    gatewayId: str | None
+    frequencyHz: Annotated[int, Field(gt=0)] | None
+    dataRate: Annotated[int, Field(ge=0, le=15)] | None
+    fPort: Annotated[int, Field(ge=1, le=255)] | None
+
+
+class IngestionDTO(DTO):
+    source: str
+    status: Literal["disabled", "connecting", "connected", "reconnecting", "offline"]
+    updatedAt: str
+
+    @field_validator("updatedAt")
     @classmethod
     def timestamp(cls, value: str) -> str:
         utc_time(value)
@@ -91,8 +121,17 @@ class DashboardDTO(DTO):
     prediction: None = None
     permissions: Permissions = Field(default_factory=Permissions)
     csrfToken: None = None
+    ingestion: IngestionDTO | None = None
 
 
 class HistoryDTO(DTO):
     items: list[TelemetryDTO]
     nextCursor: str | None
+
+
+class WindowDTO(DTO):
+    from_: str | None = Field(alias="from")
+    to: str
+    total: Annotated[int, Field(ge=0)]
+    series: Annotated[list[TelemetryDTO], Field(max_length=600)]
+    track: Annotated[list[TelemetryDTO], Field(max_length=500)]

@@ -10,6 +10,26 @@ export type CommandType =
 export type CommandStatus = 'pending' | 'sent' | 'received' | 'executed' | 'rejected' | 'expired'
 export type ConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'offline'
 
+export interface Ingestion {
+  source: string
+  status: 'disabled' | 'connecting' | 'connected' | 'reconnecting' | 'offline'
+  updatedAt: string
+}
+export interface DeviceDetails {
+  gpsActive: boolean | null
+  gpsFix: boolean | null
+  satellites: number | null
+  batteryPct: number | null
+  charging: boolean | null
+  usbPowered: boolean | null
+}
+export interface RadioDetails {
+  gatewayId: string | null
+  frequencyHz: number | null
+  dataRate: number | null
+  fPort: number | null
+}
+
 export interface Position {
   latitude: number
   longitude: number
@@ -50,6 +70,8 @@ export interface Telemetry {
   batteryV: number | null
   rssiDbm: number | null
   snrDb: number | null
+  device: DeviceDetails | null
+  radio: RadioDetails | null
 }
 export interface PredictionParameters {
   targetRelativeAltitudeM: number
@@ -92,6 +114,7 @@ export interface MissionEvent {
   position: Position | null
 }
 export interface DashboardSnapshot {
+  ingestion: Ingestion | null
   mission: Mission
   telemetry: Telemetry[]
   commands: Command[]
@@ -101,6 +124,7 @@ export interface DashboardSnapshot {
   csrfToken: string | null
 }
 export type MissionMessage =
+  | { type: 'ingestion'; data: Ingestion }
   | { type: 'telemetry'; data: Telemetry }
   | { type: 'command'; data: Command }
   | { type: 'event'; data: MissionEvent }

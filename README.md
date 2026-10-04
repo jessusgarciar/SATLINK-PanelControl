@@ -8,7 +8,9 @@ El proyecto utiliza React y TypeScript con Vite en el frontend, y Python con Fas
 
 El frontend implementa el panel de telemetría, trayectoria GPS, cuatro gráficas, recuperación/predicción y bitácora de comandos, siguiendo el Figma del equipo. Incluye una demostración interactiva claramente identificada y adaptadores HTTP/WebSocket para la estación real.
 
-El backend implementa telemetría e historial del Ejercicio 09: validación del payload de 19 bytes, persistencia PostgreSQL, snapshot HTTP, historial paginado y WebSocket posterior al commit. Esta etapa funciona en localhost, sin login y sin permisos para telecomandos o predicción. La demostración del frontend sigue separada de la estación real. Consulta la [guía de ejecución del backend](docs/setup/backend.md) y el [protocolo PICARO FULL](docs/protocols/picaro-full-v1.md).
+El backend implementa telemetría e historial: validación del payload de 19 bytes, persistencia PostgreSQL, snapshot HTTP, historial paginado y WebSocket posterior al commit. Esta etapa funciona en localhost, sin login y sin permisos para telecomandos o predicción. La demostración del frontend sigue separada de la estación real. Consulta la [guía de ejecución del backend](docs/setup/backend.md) y el [protocolo PICARO FULL](docs/protocols/picaro-full-v1.md).
+
+Cuenta con diagnóstico MQTT independiente del WebSocket, metadatos de dispositivo y radio, ventanas temporales, CSV completo, reproducción histórica a 1×/5×/10× y una bitácora técnica de sesión. El historial conserva sus fechas originales y queda separado del modo en vivo. 
 
 - [Guía del frontend](frontend/README.md): ejecución, configuración y recorrido de la interfaz.
 - [Arquitectura y decisiones de Figma](docs/architecture/frontend.md).

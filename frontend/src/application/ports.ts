@@ -7,8 +7,15 @@ import type {
   Prediction,
   PredictionParameters,
 } from '../domain/mission.ts'
+import type { HistoryPage, TelemetryWindow, TimeRange } from '../domain/history.ts'
 
-export interface MissionGateway {
+export interface HistoryGateway {
+  window(range: TimeRange, signal: AbortSignal): Promise<TelemetryWindow>
+  history(range: TimeRange, cursor: string | null, signal: AbortSignal): Promise<HistoryPage>
+  exportCsv(range: TimeRange, signal: AbortSignal): Promise<Blob>
+}
+
+export interface MissionGateway extends HistoryGateway {
   readonly mode: 'demo' | 'live'
   load(signal: AbortSignal): Promise<DashboardSnapshot>
   subscribe(

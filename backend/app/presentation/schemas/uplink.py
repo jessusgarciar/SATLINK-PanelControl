@@ -9,6 +9,7 @@ from typing import Annotated, Any
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from app.domain.entities.telemetry import IncomingUplink, JsonObject
+from app.infrastructure.mqtt.metadata import metadata_groups
 
 RFC3339 = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$")
 
@@ -109,12 +110,15 @@ class ChirpStackDecoder:
         metadata = decoded.pop("metadata")
         # RSSI y SNR siempre pertenecen al mismo gateway; preferir SNR, luego RSSI.
         receptions = [(radio_value(r.get("snr"), -40, 40), radio_value(r.get("rssi"), -200, 20),
-                       str(r.get("gatewayId", ""))) for r in envelope.rxInfo]
+                       r.get("gatewayId") if isinstance(r.get("gatewayId"), str) else "")
+                      for r in envelope.rxInfo]
         best = max(receptions, key=lambda r: (r[0] if r[0] is not None else -math.inf,
                                               r[1] if r[1] is not None else -math.inf, r[2]),
                    default=(None, None, ""))
         decoded.update(snrDb=best[0], rssiDbm=best[1])
         metadata["selectedGatewayId"] = best[2] or None
+        device, radio = metadata_groups(metadata, raw)
+        decoded.update(device=device, radio=radio)
         return IncomingUplink(source, envelope.deviceInfo.applicationId,
                               envelope.deviceInfo.devEui.lower(), envelope.deduplicationId,
                               utc_time(envelope.time), envelope.fCnt, payload, raw, decoded, metadata)

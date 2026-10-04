@@ -163,10 +163,14 @@ async def test_websocket_end_to_end_and_reconnect(store, db_url, make_uplink):
         with TestClient(app, base_url="http://localhost", client=("127.0.0.1", 50000),
                         backend_options={"loop_factory": asyncio.SelectorEventLoop}) as client:
             with client.websocket_connect("ws://localhost/api/v1/missions/test-flight/stream", headers={"Origin":"http://localhost:5173"}) as ws:
+                initial = ws.receive_json()
+                assert initial["type"] == "ingestion"
+                assert initial["data"]["status"] == "disabled"
                 data = client.portal.call(app.state.ingestor.execute, *make_uplink())
                 message = ws.receive_json()
                 assert message == {"type": "telemetry", "data": data}
             for _ in range(10):
-                with client.websocket_connect("ws://localhost/api/v1/missions/test-flight/stream"):
+                with client.websocket_connect("ws://localhost/api/v1/missions/test-flight/stream") as ws:
+                    assert ws.receive_json()["type"] == "ingestion"
                     assert client.get("/api/v1/missions/test-flight/dashboard").json()["telemetry"][0]["id"] == data["id"]
     await asyncio.to_thread(run_client)

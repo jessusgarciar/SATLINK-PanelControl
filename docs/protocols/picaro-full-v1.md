@@ -38,6 +38,8 @@ La misión se resuelve por origen configurado, applicationId y DevEUI. La unicid
 
 Se conservan el mensaje MQTT original, sobre completo, flags, porcentaje recibido, versión del codec y todos los `rxInfo`. Para la interfaz se elige la recepción con mayor SNR válido, luego RSSI y gatewayId como desempate; RSSI y SNR provienen siempre del mismo gateway. Valores inválidos o ausentes quedan en `null`.
 
+Expone los metadatos guardados como `device` y `radio`, sin cambiar el formato binario ni agregar sensores. `device` incluye GPS activo/fix, satélites, batería porcentual y flags de carga/USB. `radio` incluye gateway seleccionado, frecuencia en Hz, datarate y puerto. Los campos ausentes siguen en `null`; el porcentaje recibido no se calcula a partir del voltaje. El historial anterior se enriquece únicamente con metadatos que ya estaban archivados, sin inventar observaciones ni requerir una nueva captura física.
+
 El commit de evento y muestra es atómico y precede a WebSocket. Un duplicado no vuelve a emitirse. Los rechazos se archivan sin publicarse. Una emisión fallida se recupera mediante snapshot/historial. MQTT usa suscripción QoS 1 y reconexión; si falla la base se reintenta el mensaje en memoria. **No existe spool duradero de MQTT**: el ACK del cliente MQTT no está unido al commit, por lo que un cierre del proceso antes de guardar puede perder un mensaje. Tampoco puede recuperarse tráfico que ChirpStack no haya recibido.
 
 Las pruebas usan una base separada y eventos sintéticos. En operación, el consumidor solo recibe del broker configurado; no existe endpoint de simulación o inyección HTTP. La procedencia `chirpstack` identifica el transporte, no demuestra por sí sola una recepción física de radio.

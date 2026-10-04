@@ -1,7 +1,3 @@
-# Entorno verificado
-
-Preparación realizada el 1 de octubre de 2026 en Windows. El reporte fuente disponible fue `Reporte_StackSoftware-PC-Telemetria_SATLINK.pdf`. No se encontraron instrucciones AGENTS.md en el proyecto ni en el directorio padre comprobado. La carpeta inicial no era un repositorio Git; esta etapa no lo inicializó.
-
 ## Herramientas
 
 | Herramienta | Versión | Estado |

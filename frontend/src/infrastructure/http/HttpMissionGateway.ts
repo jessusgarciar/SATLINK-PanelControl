@@ -6,7 +6,8 @@ import type {
   PredictionParameters,
 } from '../../domain/mission.ts'
 import { subscribeMission } from '../websocket/missionStream.ts'
-import { parseCommand, parsePrediction, parseSnapshot } from './validation.ts'
+import { parseCommand, parsePrediction, parseSnapshot, parseHistory, parseWindow } from './validation.ts'
+import type { TimeRange } from '../../domain/history.ts'
 
 export class HttpMissionGateway implements MissionGateway {
   readonly mode = 'live' as const
@@ -52,6 +53,28 @@ export class HttpMissionGateway implements MissionGateway {
   }
   async load(signal: AbortSignal) {
     return parseSnapshot(await this.request('/dashboard?limit=1200', { signal }), this.missionId)
+  }
+  private interval(range: TimeRange): URLSearchParams {
+    const query = new URLSearchParams({ to: range.to })
+    if (range.from !== null) query.set('from', range.from)
+    return query
+  }
+  async window(range: TimeRange, signal: AbortSignal) {
+    return parseWindow(await this.request('/telemetry/window?' + this.interval(range), { signal }), this.missionId)
+  }
+  async history(range: TimeRange, cursor: string | null, signal: AbortSignal) {
+    const query = this.interval(range)
+    query.set('limit', '200')
+    if (cursor) query.set('cursor', cursor)
+    return parseHistory(await this.request('/telemetry?' + query, { signal }), this.missionId)
+  }
+  async exportCsv(range: TimeRange, signal: AbortSignal): Promise<Blob> {
+    const response = await fetch(this.base + '/telemetry/export.csv?' + this.interval(range), { signal, credentials: 'include', headers: { Accept: 'text/csv' } })
+    if (!response.ok || !response.headers.get('content-type')?.includes('text/csv')) {
+      await response.body?.cancel()
+      throw new Error('No se pudo exportar el archivo CSV. Comprueba el intervalo y la conexión.')
+    }
+    return await response.blob()
   }
   subscribe(
     onMessage: (message: MissionMessage) => void,

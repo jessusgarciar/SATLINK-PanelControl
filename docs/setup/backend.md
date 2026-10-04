@@ -1,6 +1,8 @@
 # Ejecutar el backend de telemetría
 
-Esta etapa permite recibir telemetría del Ejercicio 09, persistirla en PostgreSQL, consultar el historial y actualizar el panel por WebSocket. El servicio es de lectura para el operador y se ejecuta únicamente en localhost, sin login inicial. No habilita telecomandos ni predicción.
+Permite recibir telemetría, persistirla en PostgreSQL, consultar el historial y actualizar el panel por WebSocket. El servicio es de lectura para el operador y se ejecuta únicamente en localhost, sin login inicial. No habilita telecomandos ni predicción.
+
+Incorpora estados de ingestión MQTT, metadatos de dispositivo/radio, ventanas temporales y exportación CSV. La reproducción histórica y la bitácora técnica pertenecen al frontend. Se mantiene el codec binario de 19 bytes; no es necesario instalar Tkinter, SQLite ni Paho MQTT.
 
 ## Preparar el entorno
 
@@ -34,6 +36,7 @@ python -m alembic upgrade head
 | `SATLINK_MQTT_HOST`, `SATLINK_MQTT_PORT` | Broker MQTT de ChirpStack. |
 | `SATLINK_MQTT_USERNAME`, `SATLINK_MQTT_PASSWORD` | Credenciales del broker cuando correspondan. |
 | `SATLINK_MQTT_TLS` | Activa TLS para la conexión MQTT. |
+| `SATLINK_MQTT_CLIENT_ID` | Identificador estable y exclusivo de este consumidor; no reutilizar el de otra estación activa. |
 | `SATLINK_CHIRPSTACK_SOURCE` | Identificador del origen de ChirpStack; predeterminado `chirpstack-local`. Debe coincidir con la misión. |
 
 `.env` contiene configuración local y no debe versionarse. Ninguna credencial pertenece a variables públicas `VITE_*`. El ejemplo no configura por sí solo un broker ni un dispositivo físico.
@@ -60,6 +63,14 @@ El arranque mediante la CLI configura el bucle de eventos de Windows necesario p
 En `frontend/.env.local`, utiliza la configuración de [la guía del frontend](../../frontend/README.md#conectar-fastapi), con `VITE_MISSION_ID` igual al ID registrado y el proxy dirigido a `http://127.0.0.1:8000`. Reinicia Vite tras cambiar variables.
 
 La estación real muestra telemetría y trayectoria. Los permisos `canCommand` y `canPredict` permanecen en `false`; las rutas POST de comandos y predicción están fuera de esta entrega. La ausencia de paquetes deja los datos previos visibles con su antigüedad; no activa la demostración.
+
+Para habilitar ChirpStack, configura host, puerto y TLS conforme al broker, añade usuario/contraseña si los requiere y cambia `SATLINK_MQTT_ENABLED=true`. Registra la misión con el mismo `SATLINK_CHIRPSTACK_SOURCE`, Application ID y DevEUI de los uplinks. El consumidor se suscribe a `application/+/device/+/event/up` y la ingestión admite solo dispositivos asociados a una misión registrada; una conexión al broker sin misión asociada no basta para guardar muestras. No copies credenciales a `.env.local` del frontend.
+
+El panel distingue MQTT `disabled`, `connecting`, `connected`, `reconnecting` y `offline` de su propio WebSocket. `connected` representa el transporte MQTT, no una lectura reciente ni recepción RF comprobada. Ante reconexión se conservan las muestras persistidas y su antigüedad. Si no hay lecturas, revisa la configuración de la misión, el topic/sobre ChirpStack y el perfil de 19 bytes/fPort 10 antes de asumir un fallo del panel. Las reglas de rechazo y conservación del mensaje original están en el [protocolo PICARO](../protocols/picaro-full-v1.md).
+
+Ese diagnóstico refleja la última suscripción confirmada y los cambios observados por el consumidor. No es una comprobación continua de salud: durante un reintento de persistencia PostgreSQL, la detección de una desconexión del broker puede demorarse hasta volver a leer MQTT.
+
+Las consultas de ventana y CSV se describen en [Dashboard y conexión ChirpStack](../features/dashboard-chirpstack.md). Exportar un intervalo no reduce sus filas aunque la visualización use menos puntos. La reproducción histórica consulta HTTP y conserva las fechas originales; no ingresa datos nuevos a PostgreSQL.
 
 ## Pruebas y diagnóstico
 

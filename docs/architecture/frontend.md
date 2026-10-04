@@ -16,6 +16,8 @@ Implementación sobre el commit base `1bff7bc58cd196c161195fcdb8224e63af2809be`.
 
 Una fuente de estado sirve dashboard, mapa, gráficas, recuperación y comandos. `useSyncExternalStore` conecta el controlador independiente de React a la presentación. Las suscripciones, timers, peticiones y sockets se limpian al desmontar/cambiar de modo. El historial inicial y los mensajes simultáneos se mezclan por identidad y fecha. Los botones consumen casos de uso, no llaman Fetch desde componentes.
 
+Agrega consulta temporal, exportación y reproducción a esos puertos. El estado de ingestión MQTT y la conexión WebSocket son independientes. La vista histórica fija un intervalo y pagina HTTP con hasta 1200 muestras visibles más una página pendiente de hasta 200; suspende el stream en vivo y mantiene las fechas originales a 1×/5×/10×. La bitácora técnica conserva hasta 100 entradas de sesión sin persistirlas como eventos físicos. El mapa y las gráficas pueden usar subconjuntos reducidos del archivo; el CSV conserva todas las filas del intervalo.
+
 ## Figma y decisiones visuales
 
 Referencias del archivo `vHGubRMQ7LDtfg2egfMrkw`:

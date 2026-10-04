@@ -2,6 +2,22 @@
   background: var(--surface-deep);
   border-bottom: 1px solid var(--border);
 }
+.mqtt-strip { margin: 10px 0 18px; color: var(--subtle); font-size: 11px; line-height: 1.6; }
+.device-panel, .archive-controls, .technical-panel { margin: 16px 0; }
+.device-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 16px; margin: 14px 0; }
+.device-grid dd { overflow-wrap: anywhere; }
+.archive-toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.archive-toolbar label { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.archive-toolbar select { color: var(--text); background: var(--surface-deep); border: 1px solid var(--border); padding: 8px; border-radius: 4px; }
+.archive-toolbar > span, .archive-caption { color: var(--subtle); font-size: 11px; line-height: 1.7; }
+.archive-caption { margin-top: 10px; }
+.technical-log { max-height: 160px; overflow: auto; list-style: none; padding: 0; margin-top: 14px; font-size: 11px; line-height: 1.8; overflow-wrap: anywhere; }
+.technical-log time { color: var(--cyan); margin-right: 10px; }
+.history-dialog { width: min(1200px, 96vw); max-width: 1200px; }
+.history-shell { padding: 20px; }
+.history-map { height: 340px; margin: 18px 0; }
+.history-map .mission-map { height: 100%; }
+@media (max-width: 600px) { .history-shell { padding: 12px; } .device-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .archive-toolbar { gap: 8px; } .history-map { height: 280px; } }
 .header-inner {
   min-height: 76px;
   padding: 16px 24px;

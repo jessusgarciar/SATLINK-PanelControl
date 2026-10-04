@@ -1,15 +1,21 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import type { MissionController } from '../../application/MissionController.ts'
 import { dataAgeSeconds, latestSample } from '../../domain/mission.ts'
 import type { MapSettings } from '../components/MissionMap.tsx'
 import { ageLabel, clock, duration, km, number, phaseLabels } from '../format.ts'
 import { useMission, useNow } from '../hooks/useMission.ts'
+import { useArchive } from '../hooks/useArchive.ts'
+import type { TimeRange, WindowKey } from '../../domain/history.ts'
+import ArchiveToolbar from '../components/ArchiveToolbar.tsx'
 import CommandPanel from '../components/CommandPanel.tsx'
 import { DataCard, Definition, PhaseChip, SectionTitle } from '../components/ui.tsx'
 
 const MissionMap = lazy(() => import('../components/MissionMap.tsx'))
 const TelemetryCharts = lazy(() => import('../components/TelemetryCharts.tsx'))
 const RecoveryView = lazy(() => import('../components/RecoveryView.tsx'))
+const HistoryView = lazy(() => import('../components/HistoryView.tsx'))
+const mqttLabels = { disabled: 'MQTT deshabilitado', connecting: 'Conectando MQTT', connected: 'MQTT suscrito', reconnecting: 'Reconectando MQTT', offline: 'MQTT sin conexión' }
+const flag = (value: boolean | null | undefined) => value == null ? 'Desconocido' : value ? 'Sí' : 'No'
 
 export interface DashboardProps {
   controller: MissionController
@@ -20,7 +26,11 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
   const state = useMission(controller)
   const now = useNow()
   const [recoveryOpen, setRecoveryOpen] = useState(false)
+  const [windowKey, setWindowKey] = useState<WindowKey>('1h')
+  const [replayRange, setReplayRange] = useState<TimeRange | null>(null)
   const snapshot = state.snapshot
+  const archive = useArchive(controller.gateway, windowKey, Boolean(snapshot))
+  useEffect(() => { if (archive.error) controller.recordTechnical('Archivo: ' + archive.error) }, [controller, archive.error])
   const mission = snapshot?.mission
   const latest = latestSample(snapshot?.telemetry ?? [])
   const age = dataAgeSeconds(latest, now)
@@ -85,7 +95,7 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
                   ? 'SEÑAL SIMULADA EN PAUSA'
                   : 'SIMULACIÓN EN TIEMPO REAL'
                 : state.connection === 'connected'
-                  ? 'ESTACIÓN CONECTADA'
+                  ? 'FASTAPI CONECTADO'
                   : state.connection === 'reconnecting'
                     ? 'RECONECTANDO CON LA ESTACIÓN'
                     : 'SIN CONEXIÓN A LA ESTACIÓN'}
@@ -107,6 +117,7 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
             )}
           </div>
         </div>
+        {!demo && <p className="mqtt-strip" role="status">{snapshot?.ingestion ? mqttLabels[snapshot.ingestion.status] : 'Estado MQTT no disponible'} · La conexión MQTT no confirma recepción de radio.</p>}
         {demo && (
           <p className="demo-disclosure">
             DATOS DE EJEMPLO · Sin enlace con la cápsula ni comandos físicos.
@@ -222,17 +233,33 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
                 stale={stale}
               />
             </section>
+            <section className="panel device-panel" aria-label="Dispositivo y enlace">
+              <SectionTitle>GNSS · Alimentación · Radio {demo ? 'SIMULADOS' : ''}</SectionTitle>
+              <dl className="device-grid">
+                <Definition label="GPS activo">{flag(latest?.device?.gpsActive)}</Definition>
+                <Definition label="Fix GPS">{flag(latest?.device?.gpsFix)}</Definition>
+                <Definition label="Satélites">{number(latest?.device?.satellites, 0)}</Definition>
+                <Definition label="Batería reportada">{number(latest?.device?.batteryPct, 0)} %</Definition>
+                <Definition label="Cargando">{flag(latest?.device?.charging)}</Definition>
+                <Definition label="Alimentación USB">{flag(latest?.device?.usbPowered)}</Definition>
+                <Definition label="Gateway">{latest?.radio?.gatewayId ?? '—'}</Definition>
+                <Definition label="Frecuencia">{latest?.radio?.frequencyHz == null ? '—' : number(latest.radio.frequencyHz / 1e6, 3) + ' MHz'}</Definition>
+                <Definition label="Data Rate">{latest?.radio?.dataRate == null ? '—' : 'DR' + latest.radio.dataRate}</Definition>
+                <Definition label="Puerto">{number(latest?.radio?.fPort, 0)}</Definition>
+              </dl>
+            </section>
+            <ArchiveToolbar gateway={controller.gateway} selected={windowKey} setSelected={(key) => { setWindowKey(key); controller.recordTechnical('Ventana: ' + key) }} range={archive.data} total={archive.data?.total ?? null} seriesCount={archive.data?.series.length ?? 0} trackCount={archive.data?.track.length ?? 0} loading={archive.loading} error={archive.error} onActivity={controller.recordTechnical} openHistory={() => { if (archive.data) { controller.recordTechnical('Reproducción histórica: intervalo fijado · ' + archive.data.to); setReplayRange({ from: archive.data.from, to: archive.data.to }) } }} />
             <div className="telemetry-layout">
               <div className="position-column">
                 <section className="panel map-panel">
                   <div className="section-heading">
-                    <SectionTitle>Trayectoria GPS · Tiempo real</SectionTitle>
+                    <SectionTitle>Trayectoria GPS · Intervalo</SectionTitle>
                     <button className="button amber small" onClick={() => setRecoveryOpen(true)}>
                       ⊞ Recuperación
                     </button>
                   </div>
                   <Suspense fallback={<div className="map-loading">Cargando mapa…</div>}>
-                    <MissionMap snapshot={snapshot} settings={mapSettings} />
+                    <MissionMap snapshot={{ ...snapshot, telemetry: archive.data?.track ?? [] }} settings={mapSettings} />
                   </Suspense>
                   <dl className="coordinates-grid">
                     <Definition label="Lat">{number(latest?.latitude, 5)}°</Definition>
@@ -274,7 +301,7 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
                 </section>
               </div>
               <Suspense fallback={<div className="panel chart-empty">Cargando gráficas…</div>}>
-                <TelemetryCharts samples={snapshot.telemetry} />
+                <TelemetryCharts samples={archive.data?.series ?? []} />
               </Suspense>
             </div>
             {releaseEvent && (
@@ -286,6 +313,11 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
               </div>
             )}
             <CommandPanel state={state} controller={controller} now={now} />
+            <section className="panel technical-panel" aria-label="Bitácora técnica de sesión">
+              <SectionTitle>Bitácora técnica · Sesión</SectionTitle>
+              <p className="archive-caption">Conexiones y errores del panel. Separada de los eventos físicos de misión.</p>
+              <ol className="technical-log">{state.technicalLog.length ? state.technicalLog.map((entry) => <li key={entry.id}><time dateTime={entry.at}>{clock(entry.at)}</time> {entry.message}</li>) : <li>Sin cambios de conexión registrados.</li>}</ol>
+            </section>
             <section className="panel mission-config" aria-label="Configuración de misión">
               <dl>
                 <Definition label="Altitud objetivo">
@@ -329,6 +361,7 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
                 />
               </Suspense>
             )}
+            {replayRange && <Suspense fallback={<p role="status">Abriendo histórico…</p>}><HistoryView gateway={controller.gateway} snapshot={snapshot} range={replayRange} settings={mapSettings} onActivity={controller.recordTechnical} onClose={() => { controller.recordTechnical('Reproducción histórica: cerrada'); setReplayRange(null) }} /></Suspense>}
           </>
         )}
       </main>

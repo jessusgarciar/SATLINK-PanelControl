@@ -2,17 +2,65 @@ import base64
 import binascii
 import json
 from datetime import datetime, timezone
+from collections.abc import AsyncIterator
 from uuid import UUID, uuid4
-from sqlalchemy import select, tuple_
+from sqlalchemy import select, tuple_, func, Select
+from sqlalchemy.ext.asyncio import AsyncResult, AsyncSession
+from anyio import CancelScope
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.domain.entities.telemetry import ConfigurationConflict, IncomingUplink, JsonObject, Mission, MissionNotFound
 from app.infrastructure.database.models import MissionRow, ReceivedEventRow, TelemetryRow
+from app.infrastructure.mqtt.metadata import enrich_telemetry
+from app.application.use_cases.query_telemetry import interval
 
 
 def iso(value: datetime | None) -> str | None:
     return None if value is None else value.astimezone(timezone.utc).isoformat()
+
+
+def selected_indices(total: int, maximum: int) -> set[int]:
+    if total <= maximum:
+        return set(range(total))
+    # Se agregó este muestreo ya que en el Ejercicio 10 el historial permite revisar todo el vuelo.
+    return {i * (total - 1) // (maximum - 1) for i in range(maximum)}
+
+
+def filtered_rows(mission_id: str, start: datetime | None, end: datetime | None) -> Select:
+    statement = select(TelemetryRow.data, ReceivedEventRow.details, ReceivedEventRow.source).join(
+        ReceivedEventRow, ReceivedEventRow.id == TelemetryRow.id).where(TelemetryRow.mission_id == mission_id)
+    if start is not None:
+        statement = statement.where(TelemetryRow.received_at >= start)
+    if end is not None:
+        statement = statement.where(TelemetryRow.received_at < end)
+    return statement
+
+
+class DatabaseExport:
+    def __init__(self, session: AsyncSession, result: AsyncResult) -> None:
+        self.session, self.result = session, result
+        self.closed = False
+
+    async def __aiter__(self) -> AsyncIterator[JsonObject]:
+        try:
+            async for data, details, source, application_id, dev_eui in self.result:
+                yield {"telemetry": enrich_telemetry(data, details), "source": source,
+                       "applicationId": application_id, "devEui": dev_eui,
+                       "raw_json": details.get("event") if isinstance(details, dict) else None}
+        finally:
+            await self.aclose()
+
+    async def aclose(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        # La desconexión HTTP puede cancelar la tarea: cerrar también bajo ese cancel scope.
+        with CancelScope(shield=True):
+            try:
+                await self.result.close()
+            finally:
+                await self.session.close()
 
 
 class PostgresStore:
@@ -78,12 +126,14 @@ class PostgresStore:
             mission = await session.get(MissionRow, mission_id)
             if mission is None:
                 raise MissionNotFound(mission_id)
-            samples = list((await session.scalars(select(TelemetryRow.data).where(
-                TelemetryRow.mission_id == mission_id).order_by(
-                TelemetryRow.received_at.desc(), TelemetryRow.id.desc()).limit(limit))).all())
+            rows = (await session.execute(filtered_rows(mission_id, None, None).order_by(
+                TelemetryRow.received_at.desc(), TelemetryRow.id.desc()).limit(limit))).all()
+            samples = [enrich_telemetry(data, details) for data, details, _ in rows]
             return {"mission": mission.snapshot, "telemetry": list(reversed(samples)),
                     "commands": [], "events": [], "prediction": None,
-                    "permissions": {"canCommand": False, "canPredict": False}, "csrfToken": None}
+                    "permissions": {"canCommand": False, "canPredict": False}, "csrfToken": None,
+                    "ingestion": {"source": mission.source, "status": "disabled",
+                                  "updatedAt": datetime.now(timezone.utc).isoformat()}}
 
     async def history(self, mission_id: str, from_time: datetime | None = None,
                       to_time: datetime | None = None, cursor: str | None = None,
@@ -95,11 +145,8 @@ class PostgresStore:
         if from_time is not None and to_time is not None and from_time >= to_time:
             raise ValueError("from debe ser anterior a to")
         scope = {"mission": mission_id, "from": iso(from_time), "to": iso(to_time)}
-        statement = select(TelemetryRow).where(TelemetryRow.mission_id == mission_id)
-        if from_time is not None:
-            statement = statement.where(TelemetryRow.received_at >= from_time)
-        if to_time is not None:
-            statement = statement.where(TelemetryRow.received_at < to_time)
+        statement = filtered_rows(mission_id, from_time, to_time).add_columns(TelemetryRow.received_at,
+                                                                           TelemetryRow.id)
         if cursor is not None:
             try:
                 if len(cursor) > 2048:
@@ -117,11 +164,65 @@ class PostgresStore:
         async with self.sessions() as session:
             if await session.get(MissionRow, mission_id) is None:
                 raise MissionNotFound(mission_id)
-            rows = list((await session.scalars(statement.order_by(
+            rows = list((await session.execute(statement.order_by(
                 TelemetryRow.received_at, TelemetryRow.id).limit(limit + 1))).all())
             next_cursor = None
             if len(rows) > limit:
                 last = rows[limit - 1]
-                state = {**scope, "time": iso(last.received_at), "id": last.id}
+                state = {**scope, "time": iso(last[3]), "id": last[4]}
                 next_cursor = base64.urlsafe_b64encode(json.dumps(state).encode()).decode()
-            return {"items": [r.data for r in rows[:limit]], "nextCursor": next_cursor}
+            return {"items": [enrich_telemetry(r[0], r[1]) for r in rows[:limit]], "nextCursor": next_cursor}
+
+    async def window(self, mission_id: str, from_time: datetime | None,
+                     to_time: datetime) -> JsonObject:
+        interval(from_time, to_time)
+        async with self.sessions() as session:
+            # El conteo y el cursor comparten snapshot, incluso si llega telemetría durante la consulta.
+            await session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
+            if await session.get(MissionRow, mission_id) is None:
+                raise MissionNotFound(mission_id)
+            query = filtered_rows(mission_id, from_time, to_time)
+            total = int(await session.scalar(select(func.count()).select_from(query.subquery())) or 0)
+            gps_query = query.where(TelemetryRow.data["latitude"].as_float().is_not(None),
+                                    TelemetryRow.data["longitude"].as_float().is_not(None))
+            gps_total = int(await session.scalar(select(func.count()).select_from(gps_query.subquery())) or 0)
+            series_indices = selected_indices(total, 600)
+            track_indices = selected_indices(gps_total, 500)
+            series, track, gps_index = [], [], 0
+            result = await session.stream(query.order_by(TelemetryRow.received_at, TelemetryRow.id),
+                                          execution_options={"yield_per": 200})
+            try:
+                index = 0
+                async for data, details, _ in result:
+                    point = None
+                    if index in series_indices:
+                        point = enrich_telemetry(data, details)
+                        series.append(point)
+                    if data.get("latitude") is not None and data.get("longitude") is not None:
+                        if gps_index in track_indices:
+                            track.append(point if point is not None else enrich_telemetry(data, details))
+                        gps_index += 1
+                    index += 1
+            finally:
+                await result.close()
+            return {"from": iso(from_time), "to": iso(to_time), "total": total,
+                    "series": series, "track": track}
+
+    async def export(self, mission_id: str, from_time: datetime | None,
+                     to_time: datetime) -> DatabaseExport:
+        interval(from_time, to_time)
+        session = self.sessions()
+        try:
+            await session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
+            if await session.get(MissionRow, mission_id) is None:
+                raise MissionNotFound(mission_id)
+            query = filtered_rows(mission_id, from_time, to_time).join(
+                MissionRow, MissionRow.id == TelemetryRow.mission_id).add_columns(
+                    MissionRow.application_id, ReceivedEventRow.dev_eui).order_by(
+                TelemetryRow.received_at, TelemetryRow.id)
+            result = await session.stream(query, execution_options={"yield_per": 200})
+            return DatabaseExport(session, result)
+        except BaseException:
+            with CancelScope(shield=True):
+                await session.close()
+            raise

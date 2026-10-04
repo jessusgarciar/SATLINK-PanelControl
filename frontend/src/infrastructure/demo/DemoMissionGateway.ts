@@ -9,6 +9,8 @@ import type {
   PredictionParameters,
   Telemetry,
 } from '../../domain/mission.ts'
+import { demoCsv, demoWindow, inRange } from '../../domain/history.ts'
+import type { TimeRange } from '../../domain/history.ts'
 
 /** Deterministic visual scenario. No radio, predictor, actuator or backend is contacted. */
 export class DemoMissionGateway implements MissionGateway {
@@ -20,9 +22,11 @@ export class DemoMissionGateway implements MissionGateway {
   private timers = new Set<ReturnType<typeof setTimeout>>()
   private emit: (message: MissionMessage) => void = () => {}
   private data: DashboardSnapshot
+  private replayArchive: { key: string; items: Telemetry[] } | null = null
   constructor() {
     const startedAt = new Date(this.epoch).toISOString()
     this.data = {
+      ingestion: null,
       mission: {
         id: 'satlink-demo',
         name: 'SATLINK · Misión de demostración',
@@ -91,11 +95,30 @@ export class DemoMissionGateway implements MissionGateway {
       snrDb: 8.5 + Math.sin(seconds / 5),
       verticalSpeedMs:
         relative === 0 && released ? 0 : released ? -6.5 : 5 + Math.sin(seconds * 0.02) * 0.1,
+      device: { gpsActive: true, gpsFix: true, satellites: 8, batteryPct: 92, charging: false, usbPowered: false },
+      radio: { gatewayId: 'gateway-simulado', frequencyHz: 904300000, dataRate: 3, fPort: 10 },
     }
   }
   async load(signal: AbortSignal) {
     signal.throwIfAborted()
     return structuredClone(this.data)
+  }
+  async window(range: TimeRange, signal: AbortSignal) {
+    signal.throwIfAborted()
+    return structuredClone(demoWindow(this.data.telemetry, range))
+  }
+  async history(range: TimeRange, cursor: string | null, signal: AbortSignal) {
+    signal.throwIfAborted()
+    const key = JSON.stringify(range)
+    if (this.replayArchive?.key !== key) this.replayArchive = { key, items: structuredClone(this.data.telemetry.filter((t) => inRange(t, range))) }
+    const items = this.replayArchive.items
+    const offset = cursor === null ? 0 : Number(cursor)
+    if (!Number.isSafeInteger(offset) || offset < 0) throw new Error('Cursor inválido.')
+    return { items: structuredClone(items.slice(offset, offset + 200)), nextCursor: offset + 200 < items.length ? String(offset + 200) : null }
+  }
+  async exportCsv(range: TimeRange, signal: AbortSignal) {
+    signal.throwIfAborted()
+    return new Blob([demoCsv(this.data.telemetry.filter((t) => inRange(t, range)))], { type: 'text/csv;charset=utf-8' })
   }
   subscribe(
     onMessage: (message: MissionMessage) => void,

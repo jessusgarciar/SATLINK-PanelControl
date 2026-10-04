@@ -12,7 +12,9 @@ import type {
   Prediction,
   PredictionParameters,
   Telemetry,
+  Ingestion,
 } from '../../domain/mission.ts'
+import type { HistoryPage, TelemetryWindow } from '../../domain/history.ts'
 
 type JsonRecord = Record<string, unknown>
 function record(value: unknown): JsonRecord {
@@ -45,6 +47,18 @@ function bool(value: unknown): boolean {
   if (typeof value !== 'boolean')
     throw new Error('Respuesta inválida: permiso o estado no booleano.')
   return value
+}
+function optionalBool(value: unknown): boolean | null {
+  return typeof value === 'boolean' ? value : null
+}
+function optionalInteger(value: unknown, min: number, max: number): number | null {
+  const result = sensor(value, min, max)
+  return result !== null && Number.isInteger(result) ? result : null
+}
+export function parseIngestion(value: unknown): Ingestion | null {
+  if (value == null) return null
+  const ingestion = record(value)
+  return { source: str(ingestion.source), status: oneOf(ingestion.status, ['disabled', 'connecting', 'connected', 'reconnecting', 'offline'] as const), updatedAt: timestamp(ingestion.updatedAt) }
 }
 function oneOf<T extends string>(value: unknown, options: readonly T[]): T {
   if (typeof value !== 'string' || !options.includes(value as T))
@@ -105,6 +119,8 @@ export function parseMission(value: unknown): Mission {
 }
 export function parseTelemetry(value: unknown): Telemetry {
   const t = record(value)
+  const device = t.device == null ? null : record(t.device)
+  const radio = t.radio == null ? null : record(t.radio)
   const frameCounter = between(t.frameCounter, 0, 4294967295)
   if (!Number.isInteger(frameCounter)) throw new Error('Contador de trama inválido.')
   const latitude = sensor(t.latitude, -90, 90)
@@ -127,6 +143,16 @@ export function parseTelemetry(value: unknown): Telemetry {
     batteryV: sensor(t.batteryV, 0, 5.08),
     rssiDbm: sensor(t.rssiDbm, -200, 20),
     snrDb: sensor(t.snrDb, -40, 40),
+    device: device === null ? null : {
+      gpsActive: optionalBool(device.gpsActive), gpsFix: optionalBool(device.gpsFix),
+      satellites: optionalInteger(device.satellites, 0, 255), batteryPct: optionalInteger(device.batteryPct, 0, 100),
+      charging: optionalBool(device.charging), usbPowered: optionalBool(device.usbPowered),
+    },
+    radio: radio === null ? null : {
+      gatewayId: typeof radio.gatewayId === 'string' && radio.gatewayId.length <= 128 && radio.gatewayId.trim() ? radio.gatewayId : null,
+      frequencyHz: optionalInteger(radio.frequencyHz, 1, 10_000_000_000),
+      dataRate: optionalInteger(radio.dataRate, 0, 15), fPort: optionalInteger(radio.fPort, 1, 255),
+    },
   }
 }
 export function parseCommand(value: unknown): Command {
@@ -217,6 +243,7 @@ export function parseSnapshot(value: unknown, missionId: string): DashboardSnaps
     throw new Error('La respuesta contiene datos de otra misión.')
   return {
     mission,
+    ingestion: parseIngestion(s.ingestion),
     telemetry,
     commands,
     events,
@@ -231,6 +258,11 @@ export function parseSnapshot(value: unknown, missionId: string): DashboardSnaps
 export function parseMessage(value: unknown): MissionMessage | null {
   const message = record(value)
   switch (message.type) {
+    case 'ingestion': {
+      const data = parseIngestion(message.data)
+      if (!data) throw new Error('Estado MQTT ausente.')
+      return { type: 'ingestion', data }
+    }
     case 'heartbeat':
       return null
     case 'telemetry':
@@ -246,4 +278,20 @@ export function parseMessage(value: unknown): MissionMessage | null {
     default:
       throw new Error('Mensaje no compatible con el contrato v1.')
   }
+}
+
+export function parseHistory(value: unknown, missionId: string): HistoryPage {
+  const page = record(value)
+  const items = array(page.items, parseTelemetry, 1200)
+  if (items.some((t) => t.missionId !== missionId)) throw new Error('El archivo contiene otra misión.')
+  return { items, nextCursor: page.nextCursor == null ? null : str(page.nextCursor) }
+}
+export function parseWindow(value: unknown, missionId: string): TelemetryWindow {
+  const w = record(value)
+  const series = array(w.series, parseTelemetry, 600)
+  const track = array(w.track, parseTelemetry, 500)
+  if ([...series, ...track].some((t) => t.missionId !== missionId)) throw new Error('El archivo contiene otra misión.')
+  const from = optionalTimestamp(w.from), to = timestamp(w.to)
+  if (from !== null && Date.parse(from) >= Date.parse(to)) throw new Error('Intervalo inválido.')
+  return { from, to, total: between(w.total, 0, Number.MAX_SAFE_INTEGER), series, track }
 }

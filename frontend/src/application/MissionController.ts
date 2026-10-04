@@ -16,6 +16,7 @@ import type {
 import type { MissionGateway } from './ports.ts'
 
 export interface MissionState {
+  technicalLog: { id: number; at: string; message: string }[]
   snapshot: DashboardSnapshot | null
   connection: ConnectionStatus
   loading: boolean
@@ -27,6 +28,7 @@ export interface MissionState {
 }
 export class MissionController {
   private state: MissionState = {
+    technicalLog: [],
     snapshot: null,
     connection: 'connecting',
     loading: true,
@@ -42,6 +44,7 @@ export class MissionController {
   private disconnect: (() => void) | null = null
   private buffer: MissionMessage[] = []
   private refreshGeneration = 0
+  private logId = 0
   readonly gateway: MissionGateway
   constructor(gateway: MissionGateway) {
     this.gateway = gateway
@@ -54,6 +57,12 @@ export class MissionController {
     }
   }
   private update(patch: Partial<MissionState>) {
+    const entries: string[] = []
+    if (patch.connection && patch.connection !== this.state.connection) entries.push((this.gateway.mode === 'demo' ? 'Panel simulado: ' : 'FastAPI: ') + patch.connection)
+    if (patch.error && patch.error !== this.state.error) entries.push(patch.error)
+    const ingestion = patch.snapshot?.ingestion
+    if (ingestion && (ingestion.status !== this.state.snapshot?.ingestion?.status || ingestion.source !== this.state.snapshot?.ingestion?.source)) entries.push('MQTT: ' + ingestion.status + ' · ' + ingestion.source)
+    if (entries.length) patch.technicalLog = [...entries.map((message) => ({ id: ++this.logId, at: new Date().toISOString(), message })), ...this.state.technicalLog].slice(0, 100)
     this.state = { ...this.state, ...patch }
     this.listeners.forEach((listener) => listener())
   }
@@ -128,6 +137,7 @@ export class MissionController {
           ...incoming,
           mission,
           prediction,
+          ingestion: same?.ingestion && (!incoming.ingestion || Date.parse(same.ingestion.updatedAt) > Date.parse(incoming.ingestion.updatedAt)) ? same.ingestion : incoming.ingestion,
           telemetry: mergeTelemetry(same?.telemetry ?? [], incoming.telemetry, mission.id),
           commands: mergeCommands(same?.commands ?? [], incoming.commands, mission.id),
           events: mergeEvents(same?.events ?? [], incoming.events, mission.id),
@@ -156,6 +166,11 @@ export class MissionController {
   private receive(message: MissionMessage) {
     const old = this.state.snapshot
     if (!old) return
+    if (message.type === 'ingestion') {
+      if (old.ingestion && old.ingestion.source !== message.data.source) return
+      if (!old.ingestion || Date.parse(message.data.updatedAt) >= Date.parse(old.ingestion.updatedAt)) this.update({ snapshot: { ...old, ingestion: message.data } })
+      return
+    }
     const missionId = message.type === 'mission' ? message.data.id : message.data.missionId
     if (missionId !== old.mission.id) return
     let snapshot = old
@@ -188,6 +203,10 @@ export class MissionController {
     this.update({ paused })
   }
   clearActionError = () => this.update({ actionError: null })
+  recordTechnical = (message: string) => {
+    if (this.state.technicalLog[0]?.message === message) return
+    this.update({ technicalLog: [{ id: ++this.logId, at: new Date().toISOString(), message }, ...this.state.technicalLog].slice(0, 100) })
+  }
   sendCommand = async (type: CommandType, releaseConfirmed = false): Promise<boolean> => {
     const s = this.state.snapshot
     const age = dataAgeSeconds(latestSample(s?.telemetry ?? []), Date.now())

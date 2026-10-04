@@ -74,6 +74,7 @@ export default function MissionMap({
     [telemetry],
   )
   const fix = valid.at(-1)
+  const first = valid[0]
   const measured: LatLngTuple[] = valid.map((t) => [t.latitude!, t.longitude!])
   const predicted: LatLngTuple[] = overview
     ? (prediction?.trajectory.map((p) => [p.latitude, p.longitude]) ?? [])
@@ -172,6 +173,7 @@ export default function MissionMap({
             </Popup>
           </CircleMarker>
         )}
+        {first && first.id !== fix?.id && <CircleMarker center={[first.latitude!, first.longitude!]} radius={4} pathOptions={{ color: '#4ade80', fillOpacity: 1 }}><Popup>Inicio del intervalo<br />{clock(first.receivedAt)}</Popup></CircleMarker>}
         {overview && prediction && (
           <>
             <CircleMarker

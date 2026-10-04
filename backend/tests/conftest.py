@@ -36,7 +36,7 @@ def make_uplink():
             "deduplicationId": str(uuid4()), "time": "2026-10-02T12:00:00Z",
             "deviceInfo": {"applicationId": "test-app", "devEui": "0102030405060708"},
             "fCnt": 1, "fPort": 10,
-            "data": base64.b64encode(binary or bytes.fromhex("04000000000000000000000001cc000a341fdb")).decode(),
+            "data": base64.b64encode(binary if binary is not None else bytes.fromhex("04000000000000000000000001cc000a341fdb")).decode(),
             "rxInfo": [{"gatewayId": "weak", "snr": 2, "rssi": -70},
                        {"gatewayId": "strong", "snr": 6, "rssi": -100}],
         }

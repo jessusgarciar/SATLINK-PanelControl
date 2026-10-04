@@ -22,6 +22,7 @@ async def test_local_access_only():
 async def test_websocket_heartbeat_and_origin_policy():
     def run_client():
         store = AsyncMock()
+        store.dashboard.return_value = {"ingestion": {"source": "chirpstack-local"}}
         app = create_app(Settings(database_url="postgresql+psycopg://localhost/unused"), store=store)
         with TestClient(app, base_url="http://localhost", client=("127.0.0.1", 50000)) as client:
             with pytest.raises(WebSocketDisconnect) as denied:
@@ -29,9 +30,32 @@ async def test_websocket_heartbeat_and_origin_policy():
                     pass
             assert denied.value.code == 1008
             with client.websocket_connect("ws://localhost/api/v1/missions/test/stream") as ws:
+                initial = ws.receive_json()
+                assert initial["type"] == "ingestion"
+                assert initial["data"]["status"] == "disabled"
                 start = time.monotonic()
                 assert ws.receive_json() == {"type":"heartbeat"}
                 assert 19 <= time.monotonic() - start < 30
+    await asyncio.to_thread(run_client)
+
+
+async def test_websocket_reports_broker_status_without_claiming_new_sensor_readings():
+    def run_client():
+        store = AsyncMock()
+        store.dashboard.return_value = {"ingestion": {"source": "test-source"}}
+        app = create_app(Settings(database_url="postgresql+psycopg://localhost/unused", source="test-source"), store=store)
+        with TestClient(app, base_url="http://localhost", client=("127.0.0.1", 50000)) as client:
+            with client.websocket_connect("ws://localhost/api/v1/missions/test/stream") as ws:
+                initial = ws.receive_json()
+                assert initial["data"]["source"] == "test-source"
+                for status in ("connecting", "connected", "reconnecting", "offline"):
+                    client.portal.call(app.state.ingestion.update, status)
+                    message = ws.receive_json()
+                    assert message["type"] == "ingestion"
+                    assert message["data"]["status"] == status
+                    assert message["data"]["source"] == "test-source"
+                    assert "updatedAt" in message["data"]
+                store.persist.assert_not_awaited()
     await asyncio.to_thread(run_client)
 
 

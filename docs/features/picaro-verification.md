@@ -36,3 +36,28 @@ Las pruebas no prueban recepción RF, cobertura, vuelo, precisión del sensor ni
 El consumidor no tiene spool duradero: una caída del proceso entre ACK MQTT y commit puede perder un uplink. La reconexión WebSocket recupera lo que ya fue persistido. Comandos, firmware, importación de microSD y Tawhiri quedan fuera de esta entrega.
 
 Starlette 1.7.0 advierte que su TestClient con HTTPX está deprecado. Se conservaron las versiones acordadas; no se instaló HTTPX2. Vite mantiene la advertencia conocida del bloque ECharts de más de 500 kB; el build finaliza correctamente. No se afirma un porcentaje de cobertura de líneas porque no se midió.
+
+## PICARO Mission Control: 3 de octubre de 2026
+
+Esta sección corresponde a la adaptación posterior; los resultados de 33 pruebas backend y 19 frontend del 2 de octubre se conservan arriba como evidencia de la entrega anterior.
+
+| Comprobación | Resultado ejecutado |
+| --- | --- |
+| Backend: `python -m pytest -q` | **58 aprobadas**: 43 unitarias y 15 de integración; 0 fallos, 0 omitidas; 25.21 s |
+| Base exclusiva del backend | `satlink_picaro_test`; no se utilizaron datos de operación |
+| Frontend: `npm test` | **30 aprobadas** |
+| Frontend: `npm run lint` | Correcto |
+| Frontend: `npm run build` | Correcto |
+| Dependencias: `python -m pip check` | Sin requisitos rotos |
+| Python: `compileall` | Correcto |
+| Revisión visual en navegador | Dashboard, archivo, histórico y mapa revisados con demostración; reproducción a 10× observada |
+| Pantalla de 375 px | Dashboard e histórico sin desbordamiento horizontal; botones y ventana Todo comprobados |
+| Exportación CSV en demostración | Descarga preparada sin error de consola; registro técnico de la acción observado |
+
+Se comprobaron metadatos disponibles y desconocidos, cambios de estado MQTT mediante dobles de transporte, consultas temporales con reducción de puntos, exportación completa del intervalo y controladores de histórico/reproducción. Las pruebas usan entradas sintéticas; no se afirma conexión con un broker ChirpStack real ni recepción de radio.
+
+La suite agrega el recorrido consumidor MQTT simulado → PostgreSQL → WebSocket → snapshot/historial/ventana/CSV. Comprueba que el dato publicado ya está confirmado, los duplicados no generan otra muestra, los metadatos llegan a las respuestas y `raw_json` preserva el evento archivado; cuando no existe evento original, esa celda del CSV queda vacía. La API utiliza PostgreSQL real de pruebas y sus respuestas se validan con los parsers TypeScript del frontend.
+
+La conexión operativa con broker ChirpStack y hardware sigue pendiente: requiere valores reales de broker, aplicación, dispositivo y misión. Los resultados de API y reproducción no acreditan recepción RF ni vuelo.
+
+Persisten las advertencias conocidas de Starlette/HTTPX y del bloque ECharts mayor de 500 kB. MQTT sigue sin spool duradero; además, el estado de ingestión refleja la última suscripción confirmada y los cambios observados, por lo que reintentar guardar una muestra en PostgreSQL puede demorar la detección de una caída del broker. La reproducción conserva hasta 1200 muestras visibles más una página pendiente de hasta 200; ventana y trayectoria se reducen a 600 y 500 respectivamente, mientras el CSV exporta todas las filas del intervalo.
