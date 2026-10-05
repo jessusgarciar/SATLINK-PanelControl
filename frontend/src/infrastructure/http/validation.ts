@@ -197,6 +197,8 @@ export function parseEvent(value: unknown): MissionEvent {
 function parameters(value: unknown): PredictionParameters {
   const p = record(value)
   const parsed = {
+    ...(p.mode === undefined ? {} : { mode: oneOf(p.mode, ['planned', 'ascending'] as const) }),
+    ...(p.launchDatetime === undefined ? {} : { launchDatetime: timestamp(p.launchDatetime) }),
     targetRelativeAltitudeM: num(p.targetRelativeAltitudeM),
     ascentRateMs: num(p.ascentRateMs),
     descentRateMs: num(p.descentRateMs),
@@ -214,14 +216,26 @@ function timedPosition(value: unknown) {
 }
 export function parsePrediction(value: unknown): Prediction {
   const p = record(value)
+  const source = oneOf(p.source, ['demo', 'tawhiri'] as const)
+  const c = p.context == null ? null : record(p.context)
+  if (source === 'tawhiri' && !c) throw new Error('Predicción real sin contexto verificable.')
+  const trajectory = array(p.trajectory, timedPosition, 10000)
+  if (source === 'tawhiri' && trajectory.length < 2) throw new Error('Trayectoria de predicción incompleta.')
   return {
     id: str(p.id),
     missionId: str(p.missionId),
     generatedAt: timestamp(p.generatedAt),
     weatherAt: optionalTimestamp(p.weatherAt),
-    source: oneOf(p.source, ['demo', 'tawhiri'] as const),
+    source,
+    ...(c === null ? {} : { context: {
+      mode: oneOf(c.mode, ['planned', 'ascending'] as const),
+      origin: position(c.origin), originAt: timestamp(c.originAt),
+      telemetryId: c.telemetryId === null ? null : str(c.telemetryId),
+      dataset: c.dataset === null ? null : str(c.dataset),
+      altitudeReference: oneOf(c.altitudeReference, ['MSL'] as const),
+    } }),
     parameters: parameters(p.parameters),
-    trajectory: array(p.trajectory, timedPosition, 10000),
+    trajectory,
     landing: timedPosition(p.landing),
     release: timedPosition(p.release),
   }
@@ -235,6 +249,7 @@ export function parseSnapshot(value: unknown, missionId: string): DashboardSnaps
   const commands = array(s.commands, parseCommand)
   const events = array(s.events, parseEvent)
   const prediction = s.prediction === null ? null : parsePrediction(s.prediction)
+  const settings = s.predictionSettings == null ? null : record(s.predictionSettings)
   if (
     [...telemetry, ...commands, ...events, ...(prediction ? [prediction] : [])].some(
       (item) => item.missionId !== missionId,
@@ -243,6 +258,12 @@ export function parseSnapshot(value: unknown, missionId: string): DashboardSnaps
     throw new Error('La respuesta contiene datos de otra misión.')
   return {
     mission,
+    ...(settings === null ? {} : { predictionSettings: {
+      enabled: bool(settings.enabled),
+      launchAltitudeReference: oneOf(settings.launchAltitudeReference, ['MSL', 'unknown'] as const),
+      gpsAltitudeReference: oneOf(settings.gpsAltitudeReference, ['MSL', 'unknown'] as const),
+      nextAllowedAt: optionalTimestamp(settings.nextAllowedAt),
+    } }),
     ingestion: parseIngestion(s.ingestion),
     telemetry,
     commands,

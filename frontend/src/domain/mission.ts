@@ -74,6 +74,8 @@ export interface Telemetry {
   radio: RadioDetails | null
 }
 export interface PredictionParameters {
+  mode?: 'planned' | 'ascending'
+  launchDatetime?: string
   targetRelativeAltitudeM: number
   ascentRateMs: number
   descentRateMs: number
@@ -89,6 +91,14 @@ export interface Prediction {
   generatedAt: string
   weatherAt: string | null
   source: 'demo' | 'tawhiri'
+  context?: {
+    mode: 'planned' | 'ascending'
+    origin: Position
+    originAt: string
+    telemetryId: string | null
+    dataset: string | null
+    altitudeReference: 'MSL'
+  }
   parameters: PredictionParameters
   trajectory: (Position & { time: string })[]
   landing: Position & { time: string }
@@ -114,6 +124,12 @@ export interface MissionEvent {
   position: Position | null
 }
 export interface DashboardSnapshot {
+  predictionSettings?: {
+    enabled: boolean
+    launchAltitudeReference: 'MSL' | 'unknown'
+    gpsAltitudeReference: 'MSL' | 'unknown'
+    nextAllowedAt: string | null
+  }
   ingestion: Ingestion | null
   mission: Mission
   telemetry: Telemetry[]
@@ -220,4 +236,45 @@ export function validPredictionParameters(p: PredictionParameters): boolean {
     ) &&
     [p.ascentWindMs, p.descentWindMs].every((v) => Number.isFinite(v) && v >= 0 && v <= 30)
   )
+}
+
+/** Eligibility is shared by the form and controller; it never changes the physical phase. */
+export function predictionUnavailableReason(
+  snapshot: DashboardSnapshot, p: PredictionParameters, now: number,
+): string | null {
+  if (!snapshot.permissions.canPredict || !snapshot.predictionSettings?.enabled)
+    return 'Configura y habilita el predictor en la estación local.'
+  if (!snapshot.csrfToken) return 'Actualiza la conexión para recuperar el permiso local.'
+  if (['descending', 'landed'].includes(snapshot.mission.phase))
+    return 'Se conserva la predicción previa durante descenso o aterrizaje.'
+  if (!validPredictionParameters(p)) return 'Revisa los parámetros del cálculo.'
+  if (snapshot.predictionSettings.launchAltitudeReference !== 'MSL')
+    return 'Confirma la altitud del lanzamiento sobre el nivel del mar.'
+  const next = snapshot.predictionSettings.nextAllowedAt
+  if (next && Date.parse(next) > now)
+    return `Espera ${Math.ceil((Date.parse(next) - now) / 1000)} s antes del siguiente cálculo.`
+  if (p.mode === 'planned') {
+    if (!p.launchDatetime || !/(Z|[+-]\d{2}:\d{2})$/.test(p.launchDatetime) ||
+        !Number.isFinite(Date.parse(p.launchDatetime)) || Date.parse(p.launchDatetime) < now)
+      return 'Elige una fecha y hora de lanzamiento futura.'
+  } else if (p.mode === 'ascending') {
+    if (snapshot.predictionSettings.gpsAltitudeReference !== 'MSL')
+      return 'Confirma que la altitud GPS está sobre el nivel del mar.'
+    const sample = latestSample(snapshot.telemetry)
+    if (!sample || sample.latitude === null || sample.longitude === null || sample.altitudeGpsM === null ||
+        sample.device?.gpsFix === false || Date.parse(sample.receivedAt) > now + 5000 ||
+        now - Date.parse(sample.receivedAt) > snapshot.mission.staleAfterSeconds * 1000)
+      return 'El ascenso requiere el último paquete con GPS válido y reciente.'
+    if (snapshot.mission.launch.altitudeM + p.targetRelativeAltitudeM <= sample.altitudeGpsM)
+      return 'La altitud de liberación debe superar la altitud GPS actual.'
+  } else return 'Selecciona planificación o ascenso para calcular.'
+  return null
+}
+
+export function predictionParametersChanged(a: PredictionParameters, b: PredictionParameters, demo: boolean): boolean {
+  const keys: (keyof PredictionParameters)[] = ['targetRelativeAltitudeM', 'ascentRateMs', 'descentRateMs']
+  if (demo) keys.push('ascentWindDirection', 'ascentWindMs', 'descentWindDirection', 'descentWindMs')
+  if (keys.some((key) => a[key] !== b[key])) return true
+  return !demo && (a.mode !== b.mode ||
+    (a.mode === 'planned' && Date.parse(a.launchDatetime ?? '') !== Date.parse(b.launchDatetime ?? '')))
 }

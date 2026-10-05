@@ -5,6 +5,7 @@ import {
   mergeEvents,
   mergeTelemetry,
   validPredictionParameters,
+  predictionUnavailableReason,
 } from '../domain/mission.ts'
 import type {
   CommandType,
@@ -258,27 +259,18 @@ export class MissionController {
   }
   predict = async (parameters: PredictionParameters): Promise<boolean> => {
     const s = this.state.snapshot
-    const latest = latestSample(s?.telemetry ?? [])
-    const age = dataAgeSeconds(latest, Date.now())
-    const invalidAscent =
-      s?.mission.phase === 'ascending' &&
-      (age === null ||
-        age > s.mission.staleAfterSeconds ||
-        latest?.latitude == null ||
-        latest.longitude === null ||
-        latest.altitudeGpsM === null ||
-        s.mission.launch.altitudeM + parameters.targetRelativeAltitudeM <= latest.altitudeGpsM)
+    const unavailable = s && this.gateway.mode === 'live'
+      ? predictionUnavailableReason(s, parameters, Date.now()) : null
     if (
       !s ||
       this.state.predicting ||
       !s.permissions.canPredict ||
       !validPredictionParameters(parameters) ||
       this.state.connection !== 'connected' ||
-      (this.gateway.mode === 'live' &&
-        (!s.csrfToken || !['preflight', 'ascending'].includes(s.mission.phase) || invalidAscent))
+      unavailable
     ) {
       this.update({
-        actionError: 'Predicción no disponible para estos parámetros, permisos o fase.',
+        actionError: unavailable ?? 'Predicción no disponible para estos parámetros, permisos o conexión.',
       })
       return false
     }
@@ -298,7 +290,11 @@ export class MissionController {
         })
       return false
     } finally {
-      if (generation === this.generation) this.update({ predicting: false })
+      if (generation === this.generation) {
+        // Attempts consume the server cooldown even when the provider fails.
+        await this.refresh()
+        this.update({ predicting: false })
+      }
     }
   }
 }

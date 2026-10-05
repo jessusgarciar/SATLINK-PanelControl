@@ -1,7 +1,8 @@
 import base64
 import binascii
 import json
-from datetime import datetime, timezone
+import re
+from datetime import datetime, timedelta, timezone
 from collections.abc import AsyncIterator
 from uuid import UUID, uuid4
 from sqlalchemy import select, tuple_, func, Select
@@ -11,13 +12,28 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.domain.entities.telemetry import ConfigurationConflict, IncomingUplink, JsonObject, Mission, MissionNotFound
-from app.infrastructure.database.models import MissionRow, ReceivedEventRow, TelemetryRow
+from app.infrastructure.database.models import MissionRow, ReceivedEventRow, TelemetryRow, PredictionAttemptRow
+from app.domain.entities.prediction import PredictionCooldown
 from app.infrastructure.mqtt.metadata import enrich_telemetry
 from app.application.use_cases.query_telemetry import interval
 
 
 def iso(value: datetime | None) -> str | None:
     return None if value is None else value.astimezone(timezone.utc).isoformat()
+
+
+def archive_response(value: JsonObject | None) -> JsonObject | None:
+    """JSON inválido se archiva como texto escapado, nunca como constantes JSONB."""
+    if value is None:
+        return None
+    try:
+        serialized = json.dumps(value, ensure_ascii=True, allow_nan=False)
+        # JSONB rechaza NUL y sustitutos aislados; el texto conserva los escapes.
+        if re.search(r"\\u(?:0000|d[89a-f][0-9a-f]{2})", serialized):
+            raise ValueError("Texto incompatible con JSONB")
+        return value
+    except (ValueError, TypeError):
+        return {"invalidJson": json.dumps(value, ensure_ascii=True, default=str)[:262144]}
 
 
 def selected_indices(total: int, maximum: int) -> set[int]:
@@ -129,11 +145,67 @@ class PostgresStore:
             rows = (await session.execute(filtered_rows(mission_id, None, None).order_by(
                 TelemetryRow.received_at.desc(), TelemetryRow.id.desc()).limit(limit))).all()
             samples = [enrich_telemetry(data, details) for data, details, _ in rows]
+            prediction = await session.scalar(select(PredictionAttemptRow.normalized).where(
+                PredictionAttemptRow.mission_id == mission_id, PredictionAttemptRow.status == "succeeded"
+            ).order_by(PredictionAttemptRow.requested_at.desc(), PredictionAttemptRow.id.desc()).limit(1))
+            next_allowed = await session.scalar(select(func.max(PredictionAttemptRow.next_allowed_at)).where(
+                PredictionAttemptRow.mission_id == mission_id))
             return {"mission": mission.snapshot, "telemetry": list(reversed(samples)),
-                    "commands": [], "events": [], "prediction": None,
+                    "commands": [], "events": [], "prediction": prediction,
                     "permissions": {"canCommand": False, "canPredict": False}, "csrfToken": None,
+                    "predictionSettings": {"enabled": False, "launchAltitudeReference": "unknown",
+                                           "gpsAltitudeReference": "unknown", "nextAllowedAt": iso(next_allowed)},
                     "ingestion": {"source": mission.source, "status": "disabled",
                                   "updatedAt": datetime.now(timezone.utc).isoformat()}}
+
+    async def prediction_context(self, mission_id: str) -> JsonObject:
+        snapshot = await self.dashboard(mission_id, 1)
+        return {"mission": snapshot["mission"],
+                "telemetry": snapshot["telemetry"][-1] if snapshot["telemetry"] else None}
+
+    async def reserve_prediction(self, mission_id: str, request: JsonObject, now: datetime) -> str:
+        attempt_id = str(uuid4())
+        async with self.sessions.begin() as session:
+            # Bloqueo por misión únicamente durante reserva, nunca durante HTTP.
+            mission = await session.scalar(select(MissionRow).where(
+                MissionRow.id == mission_id).with_for_update())
+            if mission is None:
+                raise MissionNotFound(mission_id)
+            next_allowed = await session.scalar(select(func.max(PredictionAttemptRow.next_allowed_at)).where(
+                PredictionAttemptRow.mission_id == mission_id))
+            if next_allowed is not None and next_allowed > now:
+                raise PredictionCooldown(next_allowed)
+            session.add(PredictionAttemptRow(id=attempt_id, mission_id=mission_id,
+                requested_at=now, next_allowed_at=now + timedelta(seconds=60), status="pending",
+                raw_request=request, raw_response=None, normalized=None, error=None))
+        return attempt_id
+
+    async def complete_prediction(self, attempt_id: str, raw_response: JsonObject,
+                                  normalized: JsonObject) -> None:
+        async with self.sessions.begin() as session:
+            row = await session.get(PredictionAttemptRow, attempt_id)
+            if row is None:
+                raise LookupError("Intento de predicción inexistente")
+            row.status, row.raw_response, row.normalized, row.error = "succeeded", archive_response(raw_response), normalized, None
+
+    async def fail_prediction(self, attempt_id: str, reason: str,
+                             raw_response: JsonObject | None = None) -> None:
+        async with self.sessions.begin() as session:
+            row = await session.get(PredictionAttemptRow, attempt_id)
+            if row is None:
+                raise LookupError("Intento de predicción inexistente")
+            row.status, row.error, row.raw_response = "failed", reason[:128], archive_response(raw_response)
+
+    async def latest_prediction(self, mission_id: str) -> JsonObject | None:
+        async with self.sessions() as session:
+            return await session.scalar(select(PredictionAttemptRow.normalized).where(
+                PredictionAttemptRow.mission_id == mission_id, PredictionAttemptRow.status == "succeeded"
+            ).order_by(PredictionAttemptRow.requested_at.desc(), PredictionAttemptRow.id.desc()).limit(1))
+
+    async def prediction_next_allowed_at(self, mission_id: str) -> datetime | None:
+        async with self.sessions() as session:
+            return await session.scalar(select(func.max(PredictionAttemptRow.next_allowed_at)).where(
+                PredictionAttemptRow.mission_id == mission_id))
 
     async def history(self, mission_id: str, from_time: datetime | None = None,
                       to_time: datetime | None = None, cursor: str | None = None,

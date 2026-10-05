@@ -1,16 +1,8 @@
 from typing import Annotated, Literal
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import Field, field_validator
 from app.presentation.schemas.uplink import utc_time
-
-
-class DTO(BaseModel):
-    model_config = ConfigDict(strict=True, extra="forbid", allow_inf_nan=False)
-
-
-class Position(DTO):
-    latitude: Annotated[float, Field(ge=-90, le=90)]
-    longitude: Annotated[float, Field(ge=-180, le=180)]
-    altitudeM: Annotated[float, Field(ge=-500, le=65534)]
+from app.presentation.schemas.base import DTO, Position
+from app.presentation.schemas.prediction import PredictionDTO, PredictionSettingsDTO
 
 
 class MissionConfig(DTO):
@@ -110,7 +102,7 @@ class IngestionDTO(DTO):
 
 class Permissions(DTO):
     canCommand: Literal[False] = False
-    canPredict: Literal[False] = False
+    canPredict: bool = False
 
 
 class DashboardDTO(DTO):
@@ -118,10 +110,11 @@ class DashboardDTO(DTO):
     telemetry: list[TelemetryDTO]
     commands: Annotated[list, Field(max_length=0)] = Field(default_factory=list)
     events: Annotated[list, Field(max_length=0)] = Field(default_factory=list)
-    prediction: None = None
+    prediction: "PredictionDTO | None" = None
     permissions: Permissions = Field(default_factory=Permissions)
-    csrfToken: None = None
+    csrfToken: str | None = None
     ingestion: IngestionDTO | None = None
+    predictionSettings: "PredictionSettingsDTO" = Field(default_factory=lambda: PredictionSettingsDTO())
 
 
 class HistoryDTO(DTO):

@@ -46,3 +46,20 @@ class TelemetryRow(Base):
     mission_id: Mapped[str] = mapped_column(ForeignKey("missions.id"))
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     data: Mapped[dict[str, Any]] = mapped_column(JSONB)
+
+
+class PredictionAttemptRow(Base):
+    __tablename__ = "prediction_attempts"
+    __table_args__ = (
+        Index("ix_prediction_mission_requested", "mission_id", "requested_at", "id"),
+        CheckConstraint("status IN ('pending','succeeded','failed')", name="ck_prediction_status"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    mission_id: Mapped[str] = mapped_column(ForeignKey("missions.id"))
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    next_allowed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(16))
+    raw_request: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    raw_response: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    normalized: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    error: Mapped[str | None] = mapped_column(String(128))

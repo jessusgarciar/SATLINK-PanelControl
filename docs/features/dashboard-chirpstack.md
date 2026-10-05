@@ -36,6 +36,6 @@ Conserva hasta 100 entradas de la sesión y descarta las más antiguas al alcanz
 
 Las comprobaciones de esta etapa cubren cambios de estado MQTT, reconexión, persistencia antes de publicación, campos ausentes, aislamiento de misiones, ventanas extensas, exportación sin reducción y reproducción sin alterar fechas. Los resultados ejecutados y la revisión visual están en [Verificación PICARO](picaro-verification.md).
 
-La validación con broker y hardware depende de configurar el origen ChirpStack, Application ID, DevEUI, broker y misión reales. Una prueba sintética no acredita recepción RF ni vuelo. Esta etapa no agrega firmware, downlinks, autenticación compartida ni predicción Tawhiri. El consumidor sigue sin spool MQTT duradero; una caída antes del commit puede perder un uplink.
+La validación con broker y hardware depende de configurar el origen ChirpStack, Application ID, DevEUI, broker y misión reales. Una prueba sintética no acredita recepción RF ni vuelo. La entrega del Ejercicio 10 no agregó firmware, downlinks, autenticación compartida ni predicción Tawhiri; la ampliación posterior del predictor está en [su guía y verificación](prediction-tawhiri.md). El consumidor sigue sin spool MQTT duradero; una caída antes del commit puede perder un uplink.
 
 El estado MQTT refleja el último cambio observado por el consumidor y la suscripción confirmada, no una comprobación continua de salud. Si el consumidor está reintentando guardar una muestra por fallo de PostgreSQL, detectar una caída del broker puede demorarse hasta reanudar la lectura MQTT.

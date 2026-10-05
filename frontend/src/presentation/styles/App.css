@@ -905,6 +905,9 @@
   gap: 15px;
   margin-top: 18px;
 }
+.prediction-field { display: flex; flex-direction: column; gap: 8px; color: var(--muted); font-size: 11px; }
+.prediction-field select, .prediction-field input { width: 100%; min-width: 0; padding: 10px; background: #101c25; border: 1px solid #304451; border-radius: 5px; color: var(--text); font: inherit; color-scheme: dark; }
+.prediction-field small { overflow-wrap: anywhere; }
 .range-field {
   display: flex;
   flex-direction: column;

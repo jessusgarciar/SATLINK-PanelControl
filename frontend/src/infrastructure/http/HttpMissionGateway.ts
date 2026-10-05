@@ -34,8 +34,14 @@ export class HttpMissionGateway implements MissionGateway {
           404: 'La misión o el endpoint todavía no está disponible.',
           409: 'Existe una solicitud incompatible. Revisa la bitácora.',
           429: 'Espera antes de volver a solicitar una predicción.',
+          502: 'Tawhiri no entregó una predicción válida. Se conserva la anterior.',
+          504: 'Tawhiri agotó el tiempo de espera. Se conserva la anterior.',
         }
+        const body: unknown = response.headers.get('content-type')?.includes('application/json')
+          ? await response.json().catch(() => null) : null
+        const detail = body && typeof body === 'object' && 'detail' in body ? body.detail : null
         throw new Error(
+          (response.status === 422 && typeof detail === 'string' ? detail : null) ??
           messages[response.status] ?? 'El servidor respondió con error ' + response.status + '.',
         )
       }
@@ -112,6 +118,8 @@ export class HttpMissionGateway implements MissionGateway {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken ?? '' },
         body: JSON.stringify({
+          mode: parameters.mode,
+          ...(parameters.mode === 'planned' ? { launchDatetime: parameters.launchDatetime } : {}),
           targetRelativeAltitudeM: parameters.targetRelativeAltitudeM,
           ascentRateMs: parameters.ascentRateMs,
           descentRateMs: parameters.descentRateMs,

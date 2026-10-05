@@ -1,12 +1,16 @@
 import { lazy, Suspense, useState } from 'react'
 import type { MissionController, MissionState } from '../../application/MissionController.ts'
 import type { PredictionParameters } from '../../domain/mission.ts'
-import { distanceKm, latestSample, MAX_TARGET_RELATIVE_ALTITUDE_M } from '../../domain/mission.ts'
+import { distanceKm, latestSample, MAX_TARGET_RELATIVE_ALTITUDE_M, predictionUnavailableReason, predictionParametersChanged } from '../../domain/mission.ts'
 import { ageLabel, clock, dateTime, duration, km, number } from '../format.ts'
 import type { MapSettings } from './MissionMap.tsx'
 import { Definition, Dialog, PhaseChip, RangeInput, SectionTitle } from './ui.tsx'
 
 const MissionMap = lazy(() => import('./MissionMap.tsx'))
+function localDatetime(value: string): string {
+  const date = new Date(value)
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+}
 export default function RecoveryView({
   state,
   controller,
@@ -37,18 +41,28 @@ export default function RecoveryView({
   )
   const [copied, setCopied] = useState(false)
   const [copyError, setCopyError] = useState(false)
+  const [copiedParameters, setCopiedParameters] = useState(false)
+  const [predictionMode, setPredictionMode] = useState<'planned' | 'ascending'>(prediction?.context?.mode ?? 'planned')
+  const [launchDate, setLaunchDate] = useState(() => localDatetime(
+    prediction?.parameters.launchDatetime ?? new Date(Date.now() + 3600000).toISOString(),
+  ))
+  const validDate = launchDate && Number.isFinite(Date.parse(launchDate))
+  const effectiveParameters: PredictionParameters = demo ? parameters : {
+    ...parameters, mode: predictionMode,
+    launchDatetime: predictionMode === 'planned' && validDate ? new Date(launchDate).toISOString() : undefined,
+  }
   const update = (key: keyof PredictionParameters) => (value: number) =>
     setParameters((old) => ({ ...old, [key]: value }))
   const age = prediction
     ? Math.max(0, Math.floor((now - Date.parse(prediction.generatedAt)) / 1000))
     : null
-  const changed = prediction && JSON.stringify(parameters) !== JSON.stringify(prediction.parameters)
+  const changed = prediction && predictionParametersChanged(effectiveParameters, prediction.parameters, demo)
+  const unavailable = demo ? null : predictionUnavailableReason(snapshot, effectiveParameters, now)
   const canPredict =
     snapshot.permissions.canPredict &&
     state.connection === 'connected' &&
     (demo || Boolean(snapshot.csrfToken)) &&
-    (demo || !['descending', 'landed'].includes(mission.phase)) &&
-    (demo || age === null || age >= 60)
+    !unavailable
   const dist =
     prediction && latest?.latitude != null && latest.longitude != null
       ? distanceKm({ latitude: latest.latitude, longitude: latest.longitude }, prediction.landing)
@@ -182,9 +196,25 @@ export default function RecoveryView({
               <form
                 onSubmit={(e) => {
                   e.preventDefault()
-                  void controller.predict(parameters)
+                  void controller.predict(effectiveParameters)
                 }}
               >
+                {!demo && <>
+                  <label className="prediction-field">
+                    <span>Contexto del cálculo</span>
+                    <select value={predictionMode} onChange={(event) => setPredictionMode(event.target.value as 'planned' | 'ascending')}>
+                      <option value="planned">Planificación · sitio de lanzamiento</option>
+                      <option value="ascending">Ascenso · último GPS recibido</option>
+                    </select>
+                  </label>
+                  {predictionMode === 'planned' && <label className="prediction-field">
+                    <span>Lanzamiento · hora local del navegador</span>
+                    <input type="datetime-local" required value={launchDate} onChange={(event) => setLaunchDate(event.target.value)} />
+                    <small>UTC: {effectiveParameters.launchDatetime ?? 'Elige una fecha válida'}</small>
+                  </label>}
+                  <p className="helper-text">El contexto elegido es un supuesto del cálculo; no confirma la fase física.
+                    {predictionMode === 'ascending' && ' Se usa la hora de recepción, porque el paquete no incluye hora GPS.'}</p>
+                </>}
                 {sliders.map((s) => (
                   <RangeInput
                     key={s.key}
@@ -213,6 +243,9 @@ export default function RecoveryView({
                     ? 'Se conserva la predicción previa. El perfil de descenso requiere validación del backend.'
                     : 'Meteorología y cálculo vía backend. Solicitudes separadas al menos 60 segundos.'}
               </p>
+              {!demo && (unavailable || state.connection !== 'connected') && <p role="status" className="helper-text tone-amber">
+                {state.connection !== 'connected' ? 'Conecta con la estación local para calcular.' : unavailable}
+              </p>}
               {changed && (
                 <p className="tone-amber helper-text">
                   Parámetros modificados. Recalcula para actualizar el resultado.
@@ -260,6 +293,14 @@ export default function RecoveryView({
                           ? 'No aplica · simulación'
                           : 'No disponible'}
                     </Definition>
+                    {prediction.context && <>
+                      <Definition label="Contexto utilizado">{prediction.context.mode === 'planned' ? 'Planificación' : 'Ascenso · supuesto del operador'}</Definition>
+                      <Definition label="Origen del cálculo">{number(prediction.context.origin.latitude, 6)}°, {number(prediction.context.origin.longitude, 6)}°</Definition>
+                      <Definition label="Altitud inicial · s. n. m.">{number(prediction.context.origin.altitudeM, 1)} m</Definition>
+                      <Definition label="Inicio del cálculo · UTC">{prediction.context.originAt}</Definition>
+                      <Definition label="Liberación · s. n. m.">{number(mission.launch.altitudeM + prediction.parameters.targetRelativeAltitudeM, 1)} m</Definition>
+                      <Definition label="Paquete utilizado">{prediction.context.telemetryId ?? 'No aplica · planificación'}</Definition>
+                    </>}
                   </dl>
                   <button
                     className="button subtle full-width"
@@ -279,6 +320,24 @@ export default function RecoveryView({
                   >
                     {copied ? '✓ Coordenadas copiadas' : 'Copiar coordenadas'}
                   </button>
+                  {prediction.context && <>
+                    <button className="button subtle full-width" onClick={async () => {
+                      try {
+                        const origin = prediction.context!.origin
+                        await navigator.clipboard.writeText(JSON.stringify({
+                          profile: 'standard_profile', launch_latitude: origin.latitude,
+                          launch_longitude: (origin.longitude + 360) % 360, launch_altitude: origin.altitudeM,
+                          launch_datetime: prediction.context!.originAt,
+                          burst_altitude: mission.launch.altitudeM + prediction.parameters.targetRelativeAltitudeM,
+                          ascent_rate: prediction.parameters.ascentRateMs, descent_rate: prediction.parameters.descentRateMs,
+                          dataset: prediction.context!.dataset,
+                        }, null, 2))
+                        setCopiedParameters(true)
+                        setCopyError(false)
+                      } catch { setCopyError(true) }
+                    }}>{copiedParameters ? '✓ Parámetros copiados' : 'Copiar parámetros para SondeHub'}</button>
+                    <a className="button subtle full-width" href="https://predict.sondehub.org/" target="_blank" rel="noreferrer">Abrir SondeHub Predictor ↗</a>
+                  </>}
                   {copyError && (
                     <p role="status" className="helper-text">
                       No se pudo copiar. Selecciona las coordenadas del resultado.

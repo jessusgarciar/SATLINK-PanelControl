@@ -25,7 +25,7 @@ La fase de misión no se infiere de la pendiente de dos muestras. El disparador 
 
 Sigue la [guía del backend](../setup/backend.md) para crear el esquema, registrar la misión, iniciar el servicio y habilitar MQTT. El snapshot HTTP permite recuperar la ventana reciente; el WebSocket agrega muestras nuevas después de guardarlas. Envía heartbeat incluso cuando no hay uplinks.
 
-La estación local funciona sin login inicial y no concede permisos para comandos ni predicción. Consultar una misión inexistente produce `404`; el cliente conserva la distinción entre un backend disponible sin muestras y un fallo de conexión.
+La estación local funciona sin login inicial y no concede permisos para comandos. En la entrega inicial de telemetría tampoco habilitaba predicción; la ampliación opcional y sus requisitos se describen en [Predicción Tawhiri](prediction-tawhiri.md). Consultar una misión inexistente produce `404`; el cliente conserva la distinción entre un backend disponible sin muestras y un fallo de conexión.
 
 El snapshot incluye `ingestion`; los cambios de estado llegan por WebSocket con `type: ingestion`. La conexión MQTT y el WebSocket se muestran por separado: broker conectado no demuestra una lectura reciente, ni WebSocket conectado demuestra enlace con ChirpStack. Consulta [Dashboard y conexión ChirpStack](dashboard-chirpstack.md) para ventanas, exportación y reproducción histórica.
 

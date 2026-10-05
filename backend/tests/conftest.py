@@ -65,7 +65,7 @@ async def store(db_url, mission_config):
         command.upgrade(config, "head")
     async with repository.engine.begin() as connection:
         await connection.run_sync(migrate)
-        await connection.execute(text("TRUNCATE telemetry, received_events, missions"))
+        await connection.execute(text("TRUNCATE prediction_attempts, telemetry, received_events, missions"))
     await repository.initialize_mission(mission_config)
     yield repository
     await repository.close()

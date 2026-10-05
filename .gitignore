@@ -36,6 +36,7 @@ coverage/
 # Variables de entorno y material privado de autenticación
 .env
 /backend/mission.local.json
+/backend/prediction-settings.local.json
 .env.*
 !.env.example
 !.env.*.example

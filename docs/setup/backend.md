@@ -1,6 +1,6 @@
-# Ejecutar el backend de telemetría
+# Ejecutar el backend de telemetría y predicción
 
-Permite recibir telemetría, persistirla en PostgreSQL, consultar el historial y actualizar el panel por WebSocket. El servicio es de lectura para el operador y se ejecuta únicamente en localhost, sin login inicial. No habilita telecomandos ni predicción.
+Permite recibir telemetría, persistirla en PostgreSQL, consultar el historial y actualizar el panel por WebSocket. La predicción Tawhiri es opcional y permanece deshabilitada hasta configurar sus referencias de altitud. El servicio se ejecuta únicamente en localhost, sin login inicial. No habilita telecomandos.
 
 Incorpora estados de ingestión MQTT, metadatos de dispositivo/radio, ventanas temporales y exportación CSV. La reproducción histórica y la bitácora técnica pertenecen al frontend. Se mantiene el codec binario de 19 bytes; no es necesario instalar Tkinter, SQLite ni Paho MQTT.
 
@@ -38,6 +38,9 @@ python -m alembic upgrade head
 | `SATLINK_MQTT_TLS` | Activa TLS para la conexión MQTT. |
 | `SATLINK_MQTT_CLIENT_ID` | Identificador estable y exclusivo de este consumidor; no reutilizar el de otra estación activa. |
 | `SATLINK_CHIRPSTACK_SOURCE` | Identificador del origen de ChirpStack; predeterminado `chirpstack-local`. Debe coincidir con la misión. |
+| `SATLINK_PREDICTION_ENABLED` | `false` predeterminado; `true` habilita el servicio de predicción local. |
+| `SATLINK_PREDICTION_URL` | Proveedor Tawhiri; predeterminado `https://api.v2.sondehub.org/tawhiri`. No se expone al frontend. |
+| `SATLINK_PREDICTION_REFERENCES_FILE` | Archivo JSON con referencias de altitud por ID de misión. Vacío significa referencias desconocidas. Una ruta relativa se resuelve desde `backend` al iniciar mediante la CLI. |
 
 `.env` contiene configuración local y no debe versionarse. Ninguna credencial pertenece a variables públicas `VITE_*`. El ejemplo no configura por sí solo un broker ni un dispositivo físico.
 
@@ -62,7 +65,28 @@ El arranque mediante la CLI configura el bucle de eventos de Windows necesario p
 
 En `frontend/.env.local`, utiliza la configuración de [la guía del frontend](../../frontend/README.md#conectar-fastapi), con `VITE_MISSION_ID` igual al ID registrado y el proxy dirigido a `http://127.0.0.1:8000`. Reinicia Vite tras cambiar variables.
 
-La estación real muestra telemetría y trayectoria. Los permisos `canCommand` y `canPredict` permanecen en `false`; las rutas POST de comandos y predicción están fuera de esta entrega. La ausencia de paquetes deja los datos previos visibles con su antigüedad; no activa la demostración.
+La estación real muestra telemetría y trayectoria. `canCommand` permanece en `false`; la ruta POST de comandos está fuera de esta entrega. `canPredict` depende de la configuración explícita del predictor. La ausencia de paquetes deja los datos previos visibles con su antigüedad; no activa la demostración.
+
+## Habilitar predicción local
+
+La migración de Alembic agrega almacenamiento de predicciones y cadencia sin reemplazar la telemetría existente. Mantén el comando `python -m alembic upgrade head` antes de iniciar.
+
+Desde `backend`, copia `prediction-settings.example.json` a `prediction-settings.local.json` y sustituye el ID de ejemplo por la misión registrada. Comprueba las referencias contra la configuración/documentación de la fuente: MSL significa metros sobre el nivel del mar. Si desconoces la referencia, conserva `unknown`; no declares MSL solo para habilitar el botón. El archivo local queda fuera de Git. Ejemplo de estructura:
+
+```json
+{
+  "satlink-001": {
+    "launchAltitudeReference": "unknown",
+    "gpsAltitudeReference": "unknown"
+  }
+}
+```
+
+El ejemplo deja ambas referencias desconocidas y no permite consultar. Cambia `launchAltitudeReference` a `MSL` únicamente después de comprobarla; para continuar desde un GPS, comprueba también su referencia y cambia `gpsAltitudeReference` a `MSL`. En `.env`, configura `SATLINK_PREDICTION_ENABLED=true` y `SATLINK_PREDICTION_REFERENCES_FILE=prediction-settings.local.json`. Reinicia el backend para leer estos ajustes. Ninguna etiqueta realiza conversión de altitud elipsoidal.
+
+El snapshot entrega ajustes, token CSRF del proceso y próximo instante permitido. El POST exige el token y un `Origin` presente en `SATLINK_ALLOWED_ORIGINS`. Un reinicio requiere refrescar el snapshot para obtener el token nuevo; no habilita acceso compartido ni autenticación de operador.
+
+Selecciona `planned` con hora de lanzamiento explícita o `ascending` con GPS reciente. La selección no modifica la fase física de misión ni activa telecomandos. Las peticiones usan un límite total de 10 s, sin reintentos, y una separación persistente de 60 s también ante fallo. El resultado anterior se conserva. El recorrido y la comparación en SondeHub están en [Predicción Tawhiri](../features/prediction-tawhiri.md).
 
 Para habilitar ChirpStack, configura host, puerto y TLS conforme al broker, añade usuario/contraseña si los requiere y cambia `SATLINK_MQTT_ENABLED=true`. Registra la misión con el mismo `SATLINK_CHIRPSTACK_SOURCE`, Application ID y DevEUI de los uplinks. El consumidor se suscribe a `application/+/device/+/event/up` y la ingestión admite solo dispositivos asociados a una misión registrada; una conexión al broker sin misión asociada no basta para guardar muestras. No copies credenciales a `.env.local` del frontend.
 
