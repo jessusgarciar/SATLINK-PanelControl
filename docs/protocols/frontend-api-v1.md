@@ -142,16 +142,32 @@ El panel nunca transforma un timeout o un ACK en ejecución. No reintenta autom�
 Ejemplo **sintético** de lanzamiento planeado; reemplaza la fecha por una admisible al consultar:
 
 ```json
-{ "mode": "planned", "launchDatetime": "2026-10-04T18:00:00Z", "targetRelativeAltitudeM": 15000, "ascentRateMs": 5, "descentRateMs": 6.5 }
+{ "mode": "planned", "launchDatetime": "2026-10-08T18:00:00Z", "targetRelativeAltitudeM": 15000, "ascentRateMs": 5, "descentRateMs": 6.5 }
 ```
 
-El POST exige `mode` (`planned` o `ascending`) y las tres entradas numéricas: objetivo relativo de 1000–15000 m, ascenso de 1–10 m/s y descenso al nivel del mar de 1–15 m/s. `launchDatetime` es obligatorio, futuro y RFC3339 con zona en `planned`; está prohibido en `ascending`. El perfil planeado parte del origen persistente de misión y la hora elegida. El perfil `ascending` parte del último GPS válido y reciente con el objetivo absoluto por encima de su altitud; usa `receivedAt` como aproximación temporal porque el perfil PICARO no contiene hora GPS de medición. No selecciona silenciosamente otro origen ni convierte el último paquete en punto de lanzamiento.
+El POST exige `mode` (`planned` o `ascending`) y las tres entradas numéricas: objetivo relativo de 1000–15000 m, ascenso de 1–10 m/s y descenso al nivel del mar de 1–15 m/s. `launchDatetime` es obligatorio, futuro y RFC3339 con zona en `planned`; está prohibido en `ascending`.
+
+`planned` admite además `launch` (`Position`) opcional y `launchAltitudeReference="MSL"`. Ambos se envían juntos; una referencia sin posición o una posición sin referencia MSL produce 422. `launch` contiene latitud de −90 a 90°, longitud de −180 a 180° y altitud MSL de −500 a 65534 m. Si se omiten ambos campos, se conserva compatibilidad con el origen persistente de misión. Ejemplo sintético de origen independiente:
+
+```json
+{
+  "mode": "planned",
+  "launchDatetime": "2026-10-08T18:00:00Z",
+  "launch": { "latitude": 21.02, "longitude": -102.01, "altitudeM": 2000 },
+  "launchAltitudeReference": "MSL",
+  "targetRelativeAltitudeM": 15000,
+  "ascentRateMs": 5,
+  "descentRateMs": 6.5
+}
+```
+
+El origen manual pertenece únicamente a ese cálculo; no cambia `mission.launch`, su datum configurado, `startedAt` ni la telemetría. Su objetivo absoluto es `launch.altitudeM + targetRelativeAltitudeM`: en el ejemplo, 17000 m. El perfil `ascending` prohíbe los campos de origen manual y sigue partiendo del último GPS válido y reciente, con el objetivo absoluto referido al lanzamiento persistente de misión y por encima de la altitud GPS. Usa `receivedAt` como aproximación temporal porque el perfil PICARO no contiene hora GPS de medición. No convierte el último paquete en punto de lanzamiento.
 
 Elegir un modo expresa un perfil de cálculo del operador; no confirma fase física ni cambia `mission.phase=unknown`. Las fases confirmadas de descenso/aterrizaje no admiten este perfil estándar. Tampoco se envía un comando de liberación por solicitar una predicción.
 
-`predictionSettings` contiene `enabled`, `launchAltitudeReference` y `gpsAltitudeReference` (`MSL` o `unknown`), y `nextAllowedAt` (RFC3339 o `null`). La configuración permanece deshabilitada por defecto. Se requiere referencia MSL comprobada del lanzamiento para ambos modos y del GPS para `ascending`; declarar MSL no efectúa conversión de datum. La altitud elipsoidal necesita conversión validada antes de esta etapa.
+`predictionSettings` contiene `enabled`, `launchAltitudeReference` y `gpsAltitudeReference` (`MSL` o `unknown`), y `nextAllowedAt` (RFC3339 o `null`). La configuración permanece deshabilitada por defecto. Al habilitar el servicio, `canPredict=true` y el token CSRF permiten abrir planificación aunque el datum de la misión sea desconocido. El backend valida el origen concreto al solicitar: el origen manual exige la declaración MSL del operador en el POST; el origen persistente exige referencia MSL configurada, y `ascending` exige también la del GPS. Declarar MSL no efectúa conversión de datum ni acredita una medición: comprueba la fuente antes de declararlo. La altitud elipsoidal necesita conversión validada antes de esta etapa.
 
-El backend transforma el objetivo relativo en altitud absoluta usando la altitud persistente del lanzamiento, normaliza la longitud al intervalo requerido por Tawhiri y consulta el perfil estándar de ascenso/descenso. El descenso nominal se interpreta al nivel del mar. La URL predeterminada es `https://api.v2.sondehub.org/tawhiri`, configurable solo en backend. La consulta tiene límite total de 10 s y no se reintenta automáticamente. Se registra una separación mínima persistente de 60 s por misión, incluso si falla el proveedor; `nextAllowedAt` permite reflejarla después de refrescar. El panel no contacta directamente a Tawhiri ni transmite los vientos del simulador.
+El backend transforma el objetivo relativo en altitud absoluta usando el origen elegido para planificación o el lanzamiento persistente para continuación GPS, normaliza la longitud al intervalo requerido por Tawhiri y consulta el perfil estándar de ascenso/descenso. El descenso nominal se interpreta al nivel del mar. La URL predeterminada es `https://api.v2.sondehub.org/tawhiri`, configurable solo en backend. La consulta tiene límite total de 10 s y no se reintenta automáticamente. Se registra una separación mínima persistente de 60 s por misión, incluso si falla el proveedor; `nextAllowedAt` permite reflejarla después de refrescar. El panel no contacta directamente a Tawhiri ni transmite los vientos del simulador.
 
 `Prediction`: `id`, `missionId`, `generatedAt`, `weatherAt`, `source` (`tawhiri` real, `demo` simulado), `parameters`, `context`, `trajectory`, `release`, `landing`. Cada punto contiene `latitude`, `longitude`, `altitudeM` MSL y `time` con zona. `parameters` conserva modo, hora planeada cuando corresponde y las tres entradas; los cuatro vientos del dominio son opcionales en JSON real y se normalizan a cero. `context` conserva `mode`, `origin` (`Position`), `originAt`, `telemetryId` (`null` para origen planeado), `dataset` (texto o `null` si el proveedor no lo expone) y `altitudeReference="MSL"`. La respuesta identifica las entradas efectivamente utilizadas; no sustituye su fecha por la hora local de pantalla. Los snapshots anteriores y la demo pueden omitir `context` y `predictionSettings`; el cliente no habilita predicción real si faltan ajustes.
 
@@ -168,3 +184,12 @@ En la predicción local: HTTP 403 para predictor deshabilitado/origen/CSRF invá
 Para la futura sesión/telecomando se prevén HTTP 401 para sesión ausente y 409 para comandos incompatibles. El cliente también maneja 5xx, desconexión, respuestas HTML y timeouts de 12 s. Un error al refrescar el snapshot deja los datos visibles y deshabilita escrituras hasta recuperar permisos válidos.
 
 En producción servir `frontend/dist` y `/api` bajo el mismo origen HTTPS; el reverse proxy debe soportar upgrade WebSocket. El proxy de Vite solo es para desarrollo. El backend debe permitir el origen de desarrollo explícitamente y verificar cookies/CSRF con ese esquema. El frontend no instala servicios ni cambia configuración de PostgreSQL.
+
+## Predicción real desde la demostración
+
+La demo visual puede usar `VITE_DEMO_PREDICTION=tawhiri` con `SATLINK_DEMO_PREDICTION_ENABLED=true` en el backend. Este permiso es independiente de la estación física.
+
+- `GET /api/v1/demo/predictions`: devuelve `{enabled, csrfToken, nextAllowedAt, prediction}`. Fechas RFC3339 UTC; token y resultado pueden ser `null`. La última respuesta y cadencia se recuperan de PostgreSQL.
+- `POST /api/v1/demo/predictions`: exige origen local autorizado y `X-CSRF-Token`. Cuerpo `{parameters, phase, sample}`; `parameters` usa el contrato `planned|ascending` existente, sin vientos visuales. `phase` es la fase simulada (`preflight|ascending|descending|landed`). `sample` es `null` o `{latitude, longitude, altitudeM, time}`, con altitud MSL supuesta y fecha RFC3339 reciente. Para `ascending` se requiere la muestra; para `planned` se usa el origen de ejemplo o el origen manual declarado.
+- La respuesta usa `PredictionDTO`, `missionId=satlink-demo`, `source=tawhiri` y `context.inputSource=simulated`. `telemetryId=null`: ninguna muestra de este recorrido constituye telemetría recibida ni evidencia de radio.
+- Estados: 403 permiso/origen/token; 422 parámetros, muestra antigua o fase incompatible; 429 cadencia (incluye `Retry-After`); 502 respuesta inválida/fallo del proveedor; 504 timeout. Se mantienen 10 s de timeout y 60 s de cadencia persistente, sin reintentos automáticos.

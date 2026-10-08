@@ -1,5 +1,5 @@
 from typing import Annotated, Literal
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from app.presentation.schemas.base import DTO, Position
 from app.presentation.schemas.uplink import utc_time
 
@@ -13,6 +13,16 @@ class PredictionNumbers(DTO):
 class PlannedPredictionRequest(PredictionNumbers):
     mode: Literal["planned"]
     launchDatetime: str
+    launch: Position | None = Field(default=None, exclude_if=lambda value: value is None)
+    launchAltitudeReference: Literal["MSL"] | None = Field(default=None, exclude_if=lambda value: value is None)
+
+    @model_validator(mode="after")
+    def manual_reference(self) -> "PlannedPredictionRequest":
+        if self.launch is not None and self.launchAltitudeReference != "MSL":
+            raise ValueError("El origen manual requiere declaración explícita MSL")
+        if self.launch is None and self.launchAltitudeReference is not None:
+            raise ValueError("La referencia manual requiere un origen manual")
+        return self
 
     @field_validator("launchDatetime")
     @classmethod
@@ -40,6 +50,7 @@ class TimedPosition(Position):
 
 
 class PredictionContextDTO(DTO):
+    inputSource: Literal["simulated"] | None = Field(default=None, exclude_if=lambda value: value is None)
     mode: Literal["planned", "ascending"]
     origin: Position
     originAt: str
@@ -79,3 +90,16 @@ class PredictionSettingsDTO(DTO):
     launchAltitudeReference: Literal["MSL", "unknown"] = "unknown"
     gpsAltitudeReference: Literal["MSL", "unknown"] = "unknown"
     nextAllowedAt: str | None = None
+
+
+class DemoPredictionRequest(DTO):
+    parameters: PredictionRequest
+    sample: TimedPosition | None = None
+    phase: Literal["preflight", "ascending", "descending", "landed"]
+
+
+class DemoPredictionSession(DTO):
+    enabled: bool
+    csrfToken: str | None
+    nextAllowedAt: str | None
+    prediction: PredictionDTO | None

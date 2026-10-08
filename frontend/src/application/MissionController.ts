@@ -259,7 +259,7 @@ export class MissionController {
   }
   predict = async (parameters: PredictionParameters): Promise<boolean> => {
     const s = this.state.snapshot
-    const unavailable = s && this.gateway.mode === 'live'
+    const unavailable = s && (this.gateway.mode === 'live' || this.gateway.realPrediction)
       ? predictionUnavailableReason(s, parameters, Date.now()) : null
     if (
       !s ||

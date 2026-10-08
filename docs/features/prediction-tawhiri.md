@@ -6,10 +6,10 @@ La integración solicita un perfil físico de ascenso/descenso a Tawhiri desde e
 
 Sigue [la configuración del backend](../setup/backend.md#habilitar-predicción-local) y aplica las migraciones. El proveedor predeterminado es `https://api.v2.sondehub.org/tawhiri`; el predictor permanece deshabilitado hasta configurarlo explícitamente. Los parámetros y mensajes están en el [contrato del panel](../protocols/frontend-api-v1.md#predicción).
 
-- **Lanzamiento planeado (`planned`):** usa coordenadas y altitud del origen persistido, con una fecha/hora de lanzamiento explícita. No cambia `startedAt` ni afirma que haya despegado.
+- **Lanzamiento planeado (`planned`):** permite definir un origen independiente mediante coordenadas y altitud MSL, con una fecha/hora de lanzamiento explícita. Si la API omite el origen manual, conserva el origen persistido. No cambia la misión ni afirma que haya despegado. La [planificación independiente](prediction-planning.md) describe el popup y su verificación.
 - **Continuación desde GPS (`ascending`):** usa la muestra GPS válida más reciente, dentro del umbral de antigüedad de la misión. Como PICARO FULL no aporta hora GPS, `receivedAt` es una aproximación temporal; retrasos de radio/ingestión pueden afectar el cálculo. Elegir este modo no demuestra ascenso físico.
-- **Objetivo relativo:** el máximo de 15000 m se mide respecto al origen de lanzamiento. Tawhiri recibe la altitud absoluta del cambio de fase. La tasa nominal de descenso corresponde al nivel del mar.
-- **Altitud:** solo se usan referencias MSL comprobadas. Declarar una referencia en el archivo de configuración no convierte altitud elipsoidal. La altura de lanzamiento debe estar verificada en ambos modos; en continuación también la del GPS.
+- **Objetivo relativo:** el máximo de 15000 m se mide respecto al origen elegido para planificación o al lanzamiento persistente en continuación GPS. Tawhiri recibe la altitud absoluta del cambio de fase. La tasa nominal de descenso corresponde al nivel del mar.
+- **Altitud:** solo se usan referencias MSL comprobadas. El origen manual requiere una declaración explícita en su solicitud; el origen persistente usa la configuración de la misión y continuación exige también la del GPS. Declarar una referencia no convierte altitud elipsoidal.
 
 El contexto del resultado identifica origen, fecha efectiva, muestra usada cuando corresponde, modo y dataset meteorológico. La interfaz muestra el resultado como estimación. El punto `release` es el cambio de ascenso a descenso del perfil, sin acreditar liberación física; el punto final es un aterrizaje calculado, sin confirmarlo como observado. Los disparadores GPS y watchdog permanecen en firmware.
 
@@ -29,9 +29,11 @@ La comparación utiliza [SondeHub Predictor](https://predict.sondehub.org/), el 
 
 La coincidencia con SondeHub comprueba que SATLINK adapta y presenta de forma coherente el motor para las mismas entradas. Si ambos usan el mismo motor y meteorología, esa coincidencia no es una validación independiente de precisión física. Para evaluar precisión de vuelo hacen falta una trayectoria GPS observada y un aterrizaje confirmado, con sus fechas, datum y error frente a la predicción que existía antes del aterrizaje. No se publican porcentajes de precisión ni radios de incertidumbre sin esa evidencia.
 
-## Alcance, cambios y verificación
+## Entrega inicial: alcance y verificación del 4 de octubre de 2026
 
 Esta entrega agrega el servicio de predicción, persistencia, configuración por misión, los dos perfiles de consulta, contrato/UI y metodología SondeHub. No implementa telecomandos, cambio automático de fase ni actuación en hardware. Las pruebas con entradas sintéticas se identifican como tales.
+
+Los resultados siguientes corresponden a la integración inicial. La verificación de la ampliación del popup y origen independiente se registra por separado en [Planificación independiente](prediction-planning.md).
 
 | Verificación | Estado y evidencia |
 | --- | --- |

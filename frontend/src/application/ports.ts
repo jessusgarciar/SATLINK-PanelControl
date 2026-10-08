@@ -17,6 +17,7 @@ export interface HistoryGateway {
 
 export interface MissionGateway extends HistoryGateway {
   readonly mode: 'demo' | 'live'
+  readonly realPrediction?: boolean
   load(signal: AbortSignal): Promise<DashboardSnapshot>
   subscribe(
     onMessage: (message: MissionMessage) => void,

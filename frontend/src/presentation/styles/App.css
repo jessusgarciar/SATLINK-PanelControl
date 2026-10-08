@@ -908,6 +908,13 @@
 .prediction-field { display: flex; flex-direction: column; gap: 8px; color: var(--muted); font-size: 11px; }
 .prediction-field select, .prediction-field input { width: 100%; min-width: 0; padding: 10px; background: #101c25; border: 1px solid #304451; border-radius: 5px; color: var(--text); font: inherit; color-scheme: dark; }
 .prediction-field small { overflow-wrap: anywhere; }
+.planning-dialog { width: min(1000px, 94vw); max-height: 92dvh; }
+.planning-dialog form { padding: 20px; }
+.planning-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(260px, 1fr); gap: 20px; }
+.planning-fields { display: flex; flex-direction: column; gap: 14px; }
+.planning-map { height: 420px; width: 100%; border-radius: 6px; }
+.planning-marker span { display: block; width: 24px; height: 24px; border: 3px solid #fff; border-radius: 50%; background: #06b6d4; box-shadow: 0 0 0 5px #06b6d440; }
+@media (max-width: 700px) { .planning-grid { grid-template-columns: 1fr; } .planning-map { height: 280px; } }
 .range-field {
   display: flex;
   flex-direction: column;

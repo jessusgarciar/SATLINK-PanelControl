@@ -199,6 +199,7 @@ function parameters(value: unknown): PredictionParameters {
   const parsed = {
     ...(p.mode === undefined ? {} : { mode: oneOf(p.mode, ['planned', 'ascending'] as const) }),
     ...(p.launchDatetime === undefined ? {} : { launchDatetime: timestamp(p.launchDatetime) }),
+    ...(p.launch == null ? {} : { launch: position(p.launch), launchAltitudeReference: oneOf(p.launchAltitudeReference, ['MSL'] as const) }),
     targetRelativeAltitudeM: num(p.targetRelativeAltitudeM),
     ascentRateMs: num(p.ascentRateMs),
     descentRateMs: num(p.descentRateMs),
@@ -228,6 +229,7 @@ export function parsePrediction(value: unknown): Prediction {
     weatherAt: optionalTimestamp(p.weatherAt),
     source,
     ...(c === null ? {} : { context: {
+      ...(c.inputSource == null ? {} : { inputSource: oneOf(c.inputSource, ['simulated'] as const) }),
       mode: oneOf(c.mode, ['planned', 'ascending'] as const),
       origin: position(c.origin), originAt: timestamp(c.originAt),
       telemetryId: c.telemetryId === null ? null : str(c.telemetryId),

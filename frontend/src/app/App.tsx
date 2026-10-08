@@ -19,7 +19,7 @@ export default function App() {
     () =>
       new MissionController(
         mode === 'demo'
-          ? new DemoMissionGateway()
+          ? new DemoMissionGateway(import.meta.env.VITE_DEMO_PREDICTION === 'tawhiri')
           : new HttpMissionGateway(
               import.meta.env.VITE_API_BASE_URL ?? '/api/v1',
               import.meta.env.VITE_MISSION_ID ?? 'satlink-001',

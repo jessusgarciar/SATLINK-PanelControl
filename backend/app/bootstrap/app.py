@@ -10,6 +10,7 @@ from app.application.use_cases.ingest import IngestTelemetry
 from app.application.use_cases.ingestion_state import IngestionState
 from app.application.use_cases.query_telemetry import QueryTelemetry
 from app.bootstrap.config import Settings
+from app.bootstrap.demo import DEMO_MISSION
 from app.domain.entities.telemetry import MissionNotFound
 from app.domain.entities.telemetry import JsonObject
 from app.infrastructure.database.store import PostgresStore
@@ -24,7 +25,7 @@ from app.application.ports.prediction import PredictionProvider
 from app.application.use_cases.predict import PredictMission
 from app.domain.entities.prediction import PredictionCooldown, PredictionInvalid, PredictionTimeout, PredictionUnavailable
 from app.infrastructure.prediction.tawhiri import TawhiriProvider
-from app.presentation.schemas.prediction import PredictionDTO, PredictionRequest
+from app.presentation.schemas.prediction import PredictionDTO, PredictionRequest, DemoPredictionRequest, DemoPredictionSession
 
 
 def create_app(settings: Settings, store: PostgresStore | None = None,
@@ -36,7 +37,7 @@ def create_app(settings: Settings, store: PostgresStore | None = None,
     ingestion = IngestionState(settings.source, settings.mqtt_enabled, hub)
     queries = QueryTelemetry(repository)
     provider = prediction_provider
-    if provider is None and settings.prediction_enabled:
+    if provider is None and (settings.prediction_enabled or settings.demo_prediction_enabled):
         provider = TawhiriProvider(settings.prediction_url)
     predictor = None if provider is None else PredictMission(repository, provider, hub)
     csrf_token = secrets.token_urlsafe(32)
@@ -59,11 +60,13 @@ def create_app(settings: Settings, store: PostgresStore | None = None,
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         task = None
-        if settings.mqtt_enabled:
-            task = asyncio.create_task(consume(settings.mqtt_host, settings.mqtt_port,
-                settings.mqtt_username, settings.mqtt_password, settings.mqtt_tls,
-                settings.mqtt_client_id, ingestor.execute, ingestion.update))
         try:
+            if settings.demo_prediction_enabled:
+                await repository.initialize_mission(DEMO_MISSION)
+            if settings.mqtt_enabled:
+                task = asyncio.create_task(consume(settings.mqtt_host, settings.mqtt_port,
+                    settings.mqtt_username, settings.mqtt_password, settings.mqtt_tls,
+                    settings.mqtt_client_id, ingestor.execute, ingestion.update))
             yield
         finally:
             try:
@@ -92,7 +95,8 @@ def create_app(settings: Settings, store: PostgresStore | None = None,
             snapshot = await repository.dashboard(mission_id, limit)
             snapshot["ingestion"] = ingestion.snapshot(source_of(snapshot))
             references = settings.prediction_references.get(mission_id, {})
-            can_predict = settings.prediction_enabled and references.get("launchAltitudeReference") == "MSL"
+            # Una misión sin datum oficial aún puede planear desde un origen manual MSL.
+            can_predict = settings.prediction_enabled
             next_allowed = (snapshot.get("predictionSettings") or {}).get("nextAllowedAt")
             if settings.prediction_enabled:
                 snapshot["prediction"] = await repository.latest_prediction(mission_id)
@@ -109,14 +113,35 @@ def create_app(settings: Settings, store: PostgresStore | None = None,
 
     @app.post("/api/v1/missions/{mission_id}/predictions", response_model=PredictionDTO)
     async def predict(mission_id: str, payload: PredictionRequest, request: Request) -> dict:
+        return await execute_prediction(mission_id, payload.model_dump(mode="json"), request)
+
+    @app.get("/api/v1/demo/predictions", response_model=DemoPredictionSession)
+    async def demo_session() -> dict:
+        enabled = settings.demo_prediction_enabled
+        next_allowed = await repository.prediction_next_allowed_at("satlink-demo") if enabled else None
+        return {"enabled": enabled, "csrfToken": csrf_token if enabled else None,
+                "nextAllowedAt": next_allowed.isoformat() if next_allowed else None,
+                "prediction": await repository.latest_prediction("satlink-demo") if enabled else None}
+
+    @app.post("/api/v1/demo/predictions", response_model=PredictionDTO)
+    async def demo_predict(payload: DemoPredictionRequest, request: Request) -> dict:
+        return await execute_prediction("satlink-demo", payload.parameters.model_dump(mode="json"), request,
+            simulated={"phase": payload.phase, "sample": payload.sample.model_dump(mode="json") if payload.sample else None})
+
+    async def execute_prediction(mission_id: str, parameters: dict, request: Request,
+                                 simulated: dict | None = None) -> dict:
         token = request.headers.get("X-CSRF-Token", "")
-        if (not settings.prediction_enabled or predictor is None or
+        enabled = settings.demo_prediction_enabled if simulated is not None else settings.prediction_enabled
+        if (not enabled or predictor is None or
                 request.headers.get("Origin") not in settings.allowed_origins or
                 not secrets.compare_digest(token.encode("utf-8"), csrf_token.encode("ascii"))):
             raise HTTPException(403, "Predicción no habilitada, origen o token inválidos")
         try:
-            return await predictor.execute(mission_id, payload.model_dump(mode="json"),
-                                           settings.prediction_references.get(mission_id, {}))
+            references = ({"launchAltitudeReference": "MSL", "gpsAltitudeReference": "MSL"}
+                          if simulated is not None else settings.prediction_references.get(mission_id, {}))
+            if simulated is None:
+                return await predictor.execute(mission_id, parameters, references)
+            return await predictor.execute(mission_id, parameters, references, simulated=simulated)
         except MissionNotFound as exc:
             raise HTTPException(404, "Misión inexistente") from exc
         except PredictionInvalid as exc:

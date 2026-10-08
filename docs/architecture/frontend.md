@@ -50,7 +50,7 @@ El archivo contiene diseños móviles, no una pantalla de escritorio separada. L
 
 El frontend consume el [contrato HTTP/WebSocket](../protocols/frontend-api-v1.md). El backend implementa el codec PICARO FULL, persistencia y migraciones de telemetría, historial y publicación posterior al commit. La predicción utiliza un adaptador Tawhiri independiente de la recepción MQTT y conserva sus entradas efectivas y meteorología; consulta [su guía y evidencia de verificación](../features/prediction-tawhiri.md). La sesión de operadores para acceso compartido, los telecomandos, la actuación física y las pruebas de vuelo permanecen pendientes. La demo no valida estas integraciones.
 
-El predictor permite elegir lanzamiento planeado o continuación desde un GPS reciente. Esa elección es un perfil de cálculo del operador; no confirma una fase física de misión. El backend mantiene `phase=unknown` hasta disponer de evidencia para cambiarla. Las referencias de altitud MSL deben comprobarse explícitamente antes de habilitar consultas; no se supone equivalencia con altitud elipsoidal.
+El predictor permite elegir lanzamiento planeado o continuación desde un GPS reciente. La [planificación independiente](../features/prediction-planning.md) separa origen, fecha/hora y altitud MSL en un popup; las velocidades y el recálculo permanecen en Recuperación. El origen manual pertenece al cálculo y no reemplaza al lanzamiento persistente de misión. 
 
 La ventana del cliente conserva hasta 1200 muestras; cada gráfica representa hasta 600. PostgreSQL debe conservar el archivo completo y resolver reinicios, sesiones, duplicados y trazabilidad. Un comando de liberación se confirma manualmente y no se publica al abrir la página.
 

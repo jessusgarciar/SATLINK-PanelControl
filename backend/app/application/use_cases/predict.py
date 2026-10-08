@@ -147,17 +147,30 @@ class PredictMission:
         self.store, self.provider, self.publisher = store, provider, publisher
 
     async def execute(self, mission_id: str, parameters: JsonObject,
-                      references: JsonObject) -> JsonObject:
+                      references: JsonObject, *, simulated: JsonObject | None = None) -> JsonObject:
         now = datetime.now(timezone.utc)
         current = await self.store.prediction_context(mission_id)
         mission, latest = current["mission"], current["telemetry"]
+        if simulated is not None:
+            if mission_id != "satlink-demo":
+                raise PredictionInvalid("Las entradas simuladas solo pertenecen a la demostración")
+            mission = {**mission, "phase": simulated["phase"]}
+            sample = simulated.get("sample")
+            latest = None if sample is None else {"id": None, "receivedAt": sample["time"],
+                "latitude": sample["latitude"], "longitude": sample["longitude"],
+                "altitudeGpsM": sample["altitudeM"]}
         if mission.get("phase") in ("descending", "landed"):
             raise PredictionInvalid("El perfil estándar no actualiza descenso ni aterrizaje")
-        if references.get("launchAltitudeReference", "unknown") != "MSL":
-            raise PredictionInvalid("Declara la altitud de lanzamiento como MSL antes de predecir")
         mode = parameters["mode"]
+        manual_origin = parameters.get("launch") if mode == "planned" else None
+        if manual_origin is not None:
+            if parameters.get("launchAltitudeReference") != "MSL":
+                raise PredictionInvalid("El origen manual requiere declaración explícita MSL")
+        elif references.get("launchAltitudeReference", "unknown") != "MSL":
+            raise PredictionInvalid("Declara la altitud de lanzamiento como MSL antes de predecir")
         if mode == "planned":
-            origin, origin_at, telemetry_id = mission["launch"], timestamp(parameters["launchDatetime"]), None
+            origin = manual_origin if manual_origin is not None else mission["launch"]
+            origin_at, telemetry_id = timestamp(parameters["launchDatetime"]), None
             if origin_at < now:
                 raise PredictionInvalid("El lanzamiento planificado debe ser futuro")
         else:
@@ -174,11 +187,14 @@ class PredictMission:
             origin = {"latitude": latest["latitude"], "longitude": latest["longitude"],
                       "altitudeM": latest["altitudeGpsM"]}
             telemetry_id = latest["id"]
-        target = mission["launch"]["altitudeM"] + parameters["targetRelativeAltitudeM"]
+        launch_altitude = origin["altitudeM"] if mode == "planned" else mission["launch"]["altitudeM"]
+        target = launch_altitude + parameters["targetRelativeAltitudeM"]
         if target <= origin["altitudeM"]:
             raise PredictionInvalid("La altitud de transición debe superar la altitud de origen")
         context = {"mode": mode, "origin": origin, "originAt": origin_at.isoformat(),
                    "telemetryId": telemetry_id, "dataset": None, "altitudeReference": "MSL"}
+        if simulated is not None:
+            context["inputSource"] = "simulated"
         wire = {"profile": "standard_profile", "launch_latitude": origin["latitude"],
                 "launch_longitude": origin["longitude"] % 360, "launch_altitude": origin["altitudeM"],
                 "launch_datetime": origin_at.isoformat(), "ascent_rate": parameters["ascentRateMs"],

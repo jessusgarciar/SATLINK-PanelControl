@@ -119,7 +119,9 @@ export class HttpMissionGateway implements MissionGateway {
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken ?? '' },
         body: JSON.stringify({
           mode: parameters.mode,
-          ...(parameters.mode === 'planned' ? { launchDatetime: parameters.launchDatetime } : {}),
+          ...(parameters.mode === 'planned' ? { launchDatetime: parameters.launchDatetime,
+            ...(parameters.launch ? { launch: parameters.launch, launchAltitudeReference: parameters.launchAltitudeReference } : {}),
+          } : {}),
           targetRelativeAltitudeM: parameters.targetRelativeAltitudeM,
           ascentRateMs: parameters.ascentRateMs,
           descentRateMs: parameters.descentRateMs,

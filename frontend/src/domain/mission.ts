@@ -76,6 +76,8 @@ export interface Telemetry {
 export interface PredictionParameters {
   mode?: 'planned' | 'ascending'
   launchDatetime?: string
+  launch?: Position
+  launchAltitudeReference?: 'MSL'
   targetRelativeAltitudeM: number
   ascentRateMs: number
   descentRateMs: number
@@ -92,6 +94,7 @@ export interface Prediction {
   weatherAt: string | null
   source: 'demo' | 'tawhiri'
   context?: {
+    inputSource?: 'simulated'
     mode: 'planned' | 'ascending'
     origin: Position
     originAt: string
@@ -124,6 +127,7 @@ export interface MissionEvent {
   position: Position | null
 }
 export interface DashboardSnapshot {
+  predictionError?: string | null
   predictionSettings?: {
     enabled: boolean
     launchAltitudeReference: 'MSL' | 'unknown'
@@ -248,12 +252,16 @@ export function predictionUnavailableReason(
   if (['descending', 'landed'].includes(snapshot.mission.phase))
     return 'Se conserva la predicción previa durante descenso o aterrizaje.'
   if (!validPredictionParameters(p)) return 'Revisa los parámetros del cálculo.'
-  if (snapshot.predictionSettings.launchAltitudeReference !== 'MSL')
+  if (!(p.mode === 'planned' && p.launch && p.launchAltitudeReference === 'MSL') && snapshot.predictionSettings.launchAltitudeReference !== 'MSL')
     return 'Confirma la altitud del lanzamiento sobre el nivel del mar.'
   const next = snapshot.predictionSettings.nextAllowedAt
   if (next && Date.parse(next) > now)
     return `Espera ${Math.ceil((Date.parse(next) - now) / 1000)} s antes del siguiente cálculo.`
   if (p.mode === 'planned') {
+    if (p.launch && (!Number.isFinite(p.launch.latitude) || Math.abs(p.launch.latitude) > 90 ||
+        !Number.isFinite(p.launch.longitude) || Math.abs(p.launch.longitude) > 180 ||
+        !Number.isFinite(p.launch.altitudeM) || p.launch.altitudeM < -500 || p.launch.altitudeM > 65534 ||
+        p.launchAltitudeReference !== 'MSL')) return 'Revisa las coordenadas y la altitud sobre el nivel del mar.'
     if (!p.launchDatetime || !/(Z|[+-]\d{2}:\d{2})$/.test(p.launchDatetime) ||
         !Number.isFinite(Date.parse(p.launchDatetime)) || Date.parse(p.launchDatetime) < now)
       return 'Elige una fecha y hora de lanzamiento futura.'
@@ -275,6 +283,6 @@ export function predictionParametersChanged(a: PredictionParameters, b: Predicti
   const keys: (keyof PredictionParameters)[] = ['targetRelativeAltitudeM', 'ascentRateMs', 'descentRateMs']
   if (demo) keys.push('ascentWindDirection', 'ascentWindMs', 'descentWindDirection', 'descentWindMs')
   if (keys.some((key) => a[key] !== b[key])) return true
-  return !demo && (a.mode !== b.mode ||
-    (a.mode === 'planned' && Date.parse(a.launchDatetime ?? '') !== Date.parse(b.launchDatetime ?? '')))
+  return (['latitude', 'longitude', 'altitudeM'] as const).some(key => a.launch?.[key] !== b.launch?.[key]) || (!demo && (a.mode !== b.mode ||
+    (a.mode === 'planned' && Date.parse(a.launchDatetime ?? '') !== Date.parse(b.launchDatetime ?? ''))))
 }

@@ -21,6 +21,7 @@ class Settings:
     allowed_origins: tuple[str, ...] = ("http://localhost:5173", "http://127.0.0.1:5173",
                                        "http://localhost:8000", "http://127.0.0.1:8000")
     prediction_enabled: bool = False
+    demo_prediction_enabled: bool = False
     prediction_url: str = "https://api.v2.sondehub.org/tawhiri"
     prediction_references: dict[str, dict[str, str]] = field(default_factory=dict)
 
@@ -77,5 +78,6 @@ class Settings:
                    mqtt_client_id=os.getenv("SATLINK_MQTT_CLIENT_ID", "satlink-telemetry"),
                    port=int(os.getenv("SATLINK_PORT", "8000")),
                    prediction_enabled=flag("SATLINK_PREDICTION_ENABLED"),
+                   demo_prediction_enabled=flag("SATLINK_DEMO_PREDICTION_ENABLED"),
                    prediction_url=os.getenv("SATLINK_PREDICTION_URL", "https://api.v2.sondehub.org/tawhiri"),
                    prediction_references=references, **options)

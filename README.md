@@ -8,15 +8,30 @@ El proyecto utiliza React y TypeScript con Vite en el frontend, y Python con Fas
 
 El frontend implementa el panel de telemetría, trayectoria GPS, cuatro gráficas, recuperación/predicción y bitácora de comandos, siguiendo el Figma del equipo. Incluye una demostración interactiva claramente identificada y adaptadores HTTP/WebSocket para la estación real.
 
-El backend implementa telemetría e historial: validación del payload de 19 bytes, persistencia PostgreSQL, snapshot HTTP, historial paginado y WebSocket posterior al commit. La integración de predicción Tawhiri añade consultas de lanzamiento planeado o continuación desde GPS, persistencia de la última respuesta válida y comprobación comparativa en SondeHub. Su configuración está deshabilitada por defecto y requiere comprobar las referencias de altitud de cada misión. Esta etapa funciona en localhost, sin login y sin telecomandos. La demostración del frontend sigue separada de la estación real. Consulta la [guía de ejecución del backend](docs/setup/backend.md), el [protocolo PICARO FULL](docs/protocols/picaro-full-v1.md) y la [guía de predicción y su verificación](docs/features/prediction-tawhiri.md).
+El backend implementa telemetría e historial: validación del payload de 19 bytes, persistencia PostgreSQL, snapshot HTTP, historial paginado y WebSocket posterior al commit. La integración de predicción Tawhiri añade consultas de lanzamiento planeado o continuación desde GPS, persistencia de la última respuesta válida y comprobación comparativa en SondeHub. Su configuración está deshabilitada por defecto y cada consulta requiere comprobar las referencias de altitud del origen elegido. Esta etapa funciona en localhost, sin login y sin telecomandos. La demostración del frontend sigue separada de la estación real. Consulta la [guía de ejecución del backend](docs/setup/backend.md), el [protocolo PICARO FULL](docs/protocols/picaro-full-v1.md) y la [guía de predicción y su verificación](docs/features/prediction-tawhiri.md).
 
 Cuenta con diagnóstico MQTT independiente del WebSocket, metadatos de dispositivo y radio, ventanas temporales, CSV completo, reproducción histórica a 1×/5×/10× y una bitácora técnica de sesión. El historial conserva sus fechas originales y queda separado del modo en vivo. 
 
 - [Guía del frontend](frontend/README.md): ejecución, configuración y recorrido de la interfaz.
 - [Arquitectura y decisiones de Figma](docs/architecture/frontend.md).
+- [Planificación independiente](docs/features/prediction-planning.md): origen manual, fecha/hora, altitud MSL y verificación del popup de Recuperación.
 - [Entrega, validación y subida a GitHub](docs/frontend-delivery.md).
 
-## Requisitos
+## Arranque conjunto: demostración con Tawhiri real
+
+Con las dependencias instaladas y `backend/.env` configurado, desde la raíz:
+
+```powershell
+.\scripts\start-dev.ps1
+```
+
+Inicia PostgreSQL portátil, prepara la base, inicia backend y frontend, y abre `http://127.0.0.1:5173`. La misma terminal muestra los logs en vivo con los prefijos `[BD]`, `[BACKEND]` y `[FRONTEND]`; las consultas Tawhiri aparecen en el backend. `Ctrl+C` detiene los componentes que inició. Los registros de frontend/backend también quedan en `.local/dev-logs`; PostgreSQL conserva `.local/postgresql/server.log`. Para abrir el panel por tu cuenta, añade `-NoBrowser`.
+
+La **DEMOSTRACIÓN** sigue animando la telemetría y los comandos en el navegador. En **Recuperación**, el botón **Consultar Tawhiri** obtiene una predicción real con esos datos de ejemplo; permite planificación con fecha futura y continuación desde el GPS simulado. Las consultas son manuales y respetan una separación de 60 segundos. El lanzador no requiere completar `mission.local.json` para la demo y mantiene MQTT deshabilitado durante esta ejecución.
+
+La ejecución habitual de `npm run dev` conserva el cálculo visual local salvo que se configure `VITE_DEMO_PREDICTION=tawhiri`. Consulta [Demostración con Tawhiri y arranque conjunto](docs/features/demo-tawhiri.md) para configuración, contrato y verificación.
+
+## Requisitos del entorno
 
 - Node.js 22.12 o superior dentro de la rama 22 y npm 10. Entorno verificado: Node.js 22.18.0 y npm 10.9.3.
 - Python 3.13. Entorno verificado: Python 3.13.7.

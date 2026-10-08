@@ -10,6 +10,7 @@ import type {
   Telemetry,
 } from '../../domain/mission.ts'
 import { demoCsv, demoWindow, inRange } from '../../domain/history.ts'
+import { DemoPredictionClient } from '../http/DemoPredictionClient.ts'
 import type { TimeRange } from '../../domain/history.ts'
 
 /** Deterministic visual scenario. No radio, predictor, actuator or backend is contacted. */
@@ -23,7 +24,11 @@ export class DemoMissionGateway implements MissionGateway {
   private emit: (message: MissionMessage) => void = () => {}
   private data: DashboardSnapshot
   private replayArchive: { key: string; items: Telemetry[] } | null = null
-  constructor() {
+  readonly realPrediction: boolean
+  private predictionClient: DemoPredictionClient
+  constructor(realPrediction = false, predictionClient = new DemoPredictionClient()) {
+    this.realPrediction = realPrediction
+    this.predictionClient = predictionClient
     const startedAt = new Date(this.epoch).toISOString()
     this.data = {
       ingestion: null,
@@ -53,7 +58,7 @@ export class DemoMissionGateway implements MissionGateway {
       csrfToken: null,
     }
     this.data.telemetry = Array.from({ length: 157 }, (_, i) => this.sample(i))
-    this.data.prediction = this.makePrediction(this.defaults())
+    if (!realPrediction) this.data.prediction = this.makePrediction(this.defaults())
   }
   defaults(): PredictionParameters {
     return {
@@ -101,6 +106,22 @@ export class DemoMissionGateway implements MissionGateway {
   }
   async load(signal: AbortSignal) {
     signal.throwIfAborted()
+    if (this.realPrediction) {
+      try {
+        const session = await this.predictionClient.session(signal)
+        this.data.csrfToken = session.csrfToken
+        this.data.permissions.canPredict = session.enabled
+        this.data.predictionSettings = { enabled: session.enabled, launchAltitudeReference: 'MSL',
+          gpsAltitudeReference: 'MSL', nextAllowedAt: session.nextAllowedAt }
+        this.data.prediction = session.prediction
+        this.data.predictionError = session.enabled ? null : 'Habilita SATLINK_DEMO_PREDICTION_ENABLED en el backend.'
+      } catch (error) {
+        if (signal.aborted) throw error
+        this.data.permissions.canPredict = false
+        this.data.csrfToken = null
+        this.data.predictionError = 'Tawhiri no está conectado al backend. Inicia el proyecto y pulsa Reintentar conexión.'
+      }
+    }
     return structuredClone(this.data)
   }
   async window(range: TimeRange, signal: AbortSignal) {
@@ -222,18 +243,20 @@ export class DemoMissionGateway implements MissionGateway {
   }
   private makePrediction(p: PredictionParameters): Prediction {
     const current = this.data.telemetry.at(-1) ?? this.sample(this.elapsed)
-    const origin = {
+    const origin = p.mode === 'planned' && p.launch ? p.launch : {
       latitude: current.latitude!,
       longitude: current.longitude!,
       altitudeM: current.altitudeGpsM!,
     }
     const now = Date.now()
-    const target = this.data.mission.launch.altitudeM + p.targetRelativeAltitudeM
+    const startAt = p.mode === 'planned' && p.launchDatetime ? Date.parse(p.launchDatetime) : now
+    const ground = p.launch?.altitudeM ?? this.data.mission.launch.altitudeM
+    const target = ground + p.targetRelativeAltitudeM
     const ascentSeconds =
-      this.releaseAt === null ? Math.max(0, target - origin.altitudeM) / p.ascentRateMs : 0
+      p.mode === 'planned' || this.releaseAt === null ? Math.max(0, target - origin.altitudeM) / p.ascentRateMs : 0
     const releaseAltitude = ascentSeconds ? target : origin.altitudeM
     const descentSeconds =
-      Math.max(0, releaseAltitude - this.data.mission.launch.altitudeM) / p.descentRateMs
+      Math.max(0, releaseAltitude - ground) / p.descentRateMs
     const drift = (
       start: typeof origin,
       seconds: number,
@@ -253,7 +276,7 @@ export class DemoMissionGateway implements MissionGateway {
     }
     const release = {
       ...drift(origin, ascentSeconds, p.ascentWindDirection, p.ascentWindMs, releaseAltitude),
-      time: new Date(now + ascentSeconds * 1000).toISOString(),
+      time: new Date(startAt + ascentSeconds * 1000).toISOString(),
     }
     const landing = {
       ...drift(
@@ -261,9 +284,9 @@ export class DemoMissionGateway implements MissionGateway {
         descentSeconds,
         p.descentWindDirection,
         p.descentWindMs,
-        this.data.mission.launch.altitudeM,
+        ground,
       ),
-      time: new Date(now + (ascentSeconds + descentSeconds) * 1000).toISOString(),
+      time: new Date(startAt + (ascentSeconds + descentSeconds) * 1000).toISOString(),
     }
     const trajectory = Array.from({ length: 41 }, (_, i) => {
       const ascending = i <= 20
@@ -281,7 +304,7 @@ export class DemoMissionGateway implements MissionGateway {
           ascending ? p.ascentWindMs : p.descentWindMs,
           altitudeM,
         ),
-        time: new Date(now + (ascending ? seconds : ascentSeconds + seconds) * 1000).toISOString(),
+        time: new Date(startAt + (ascending ? seconds : ascentSeconds + seconds) * 1000).toISOString(),
       }
     })
     return {
@@ -291,13 +314,17 @@ export class DemoMissionGateway implements MissionGateway {
       weatherAt: null,
       source: 'demo',
       parameters: { ...p },
+      ...(p.mode === 'planned' && p.launch ? { context: { mode: 'planned' as const, origin: { ...origin }, originAt: new Date(startAt).toISOString(),
+        telemetryId: null, dataset: null, altitudeReference: 'MSL' as const } } : {}),
       trajectory,
       release,
       landing,
     }
   }
-  async predict(parameters: PredictionParameters) {
-    const prediction = this.makePrediction(parameters)
+  async predict(parameters: PredictionParameters, csrfToken: string | null = null) {
+    const prediction = this.realPrediction
+      ? await this.predictionClient.predict(parameters, csrfToken, this.data.telemetry.at(-1), this.data.mission.phase)
+      : this.makePrediction(parameters)
     this.data.prediction = prediction
     return structuredClone(prediction)
   }

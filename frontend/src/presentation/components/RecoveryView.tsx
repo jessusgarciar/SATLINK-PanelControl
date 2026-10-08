@@ -5,6 +5,7 @@ import { distanceKm, latestSample, MAX_TARGET_RELATIVE_ALTITUDE_M, predictionUna
 import { ageLabel, clock, dateTime, duration, km, number } from '../format.ts'
 import type { MapSettings } from './MissionMap.tsx'
 import { Definition, Dialog, PhaseChip, RangeInput, SectionTitle } from './ui.tsx'
+import PlanningDialog from './PlanningDialog.tsx'
 
 const MissionMap = lazy(() => import('./MissionMap.tsx'))
 function localDatetime(value: string): string {
@@ -27,7 +28,8 @@ export default function RecoveryView({
   const snapshot = state.snapshot!
   const { mission, prediction } = snapshot
   const latest = latestSample(snapshot.telemetry)
-  const demo = controller.gateway.mode === 'demo'
+  const simulated = controller.gateway.mode === 'demo'
+  const demo = simulated && !controller.gateway.realPrediction
   const [parameters, setParameters] = useState<PredictionParameters>(
     prediction?.parameters ?? {
       targetRelativeAltitudeM: mission.targetRelativeAltitudeM,
@@ -40,6 +42,7 @@ export default function RecoveryView({
     },
   )
   const [copied, setCopied] = useState(false)
+  const [planningOpen, setPlanningOpen] = useState(false)
   const [copyError, setCopyError] = useState(false)
   const [copiedParameters, setCopiedParameters] = useState(false)
   const [predictionMode, setPredictionMode] = useState<'planned' | 'ascending'>(prediction?.context?.mode ?? 'planned')
@@ -49,6 +52,8 @@ export default function RecoveryView({
   const validDate = launchDate && Number.isFinite(Date.parse(launchDate))
   const effectiveParameters: PredictionParameters = demo ? parameters : {
     ...parameters, mode: predictionMode,
+    launch: predictionMode === 'planned' ? parameters.launch : undefined,
+    launchAltitudeReference: predictionMode === 'planned' ? parameters.launchAltitudeReference : undefined,
     launchDatetime: predictionMode === 'planned' && validDate ? new Date(launchDate).toISOString() : undefined,
   }
   const update = (key: keyof PredictionParameters) => (value: number) =>
@@ -57,7 +62,7 @@ export default function RecoveryView({
     ? Math.max(0, Math.floor((now - Date.parse(prediction.generatedAt)) / 1000))
     : null
   const changed = prediction && predictionParametersChanged(effectiveParameters, prediction.parameters, demo)
-  const unavailable = demo ? null : predictionUnavailableReason(snapshot, effectiveParameters, now)
+  const unavailable = demo ? null : snapshot.predictionError ?? predictionUnavailableReason(snapshot, effectiveParameters, now)
   const canPredict =
     snapshot.permissions.canPredict &&
     state.connection === 'connected' &&
@@ -137,9 +142,10 @@ export default function RecoveryView({
     >
       <div className="recovery-shell">
         <div className="recovery-status">
+          <button className="button subtle" onClick={() => setPlanningOpen(true)}>＋ Planificación independiente</button>
           <PhaseChip phase={mission.phase} />
           <span className="tiny-badge badge-amber">
-            {demo ? 'ESCENARIO SIMULADO' : 'ESTIMACIÓN · NO ES ATERRIZAJE CONFIRMADO'}
+            {simulated ? (demo ? 'ESCENARIO SIMULADO' : 'TELEMETRÍA SIMULADA · TAWHIRI REAL') : 'ESTIMACIÓN · NO ES ATERRIZAJE CONFIRMADO'}
           </span>
         </div>
         <div className="recovery-grid">
@@ -155,7 +161,7 @@ export default function RecoveryView({
               </span>
               <span>
                 <i className="legend-line" />
-                Trayectoria recibida
+                {simulated ? 'Trayectoria simulada' : 'Trayectoria recibida'}
               </span>
               <span>
                 <i className="legend-dot release" />
@@ -167,8 +173,8 @@ export default function RecoveryView({
               </span>
             </div>
             <p className="helper-text">
-              {demo
-                ? 'Origen y recorrido ficticios para probar la interfaz.'
+              {simulated
+                ? 'Origen y recorrido ficticios para probar la interfaz. La ruta predicha se muestra por separado.'
                 : 'La ruta medida se conserva separada de la predicción.'}
             </p>
           </section>
@@ -212,6 +218,7 @@ export default function RecoveryView({
                     <input type="datetime-local" required value={launchDate} onChange={(event) => setLaunchDate(event.target.value)} />
                     <small>UTC: {effectiveParameters.launchDatetime ?? 'Elige una fecha válida'}</small>
                   </label>}
+                  {predictionMode === 'planned' && parameters.launch && <p className="helper-text">Origen independiente: {number(parameters.launch.latitude, 6)}°, {number(parameters.launch.longitude, 6)}° · {number(parameters.launch.altitudeM, 1)} m s. n. m. Abre Planificación independiente para cambiarlo.</p>}
                   <p className="helper-text">El contexto elegido es un supuesto del cálculo; no confirma la fase física.
                     {predictionMode === 'ascending' && ' Se usa la hora de recepción, porque el paquete no incluye hora GPS.'}</p>
                 </>}
@@ -233,7 +240,7 @@ export default function RecoveryView({
                     ? 'Calculando…'
                     : demo
                       ? 'Recalcular escenario'
-                      : 'Solicitar predicción'}
+                      : 'Consultar Tawhiri'}
                 </button>
               </form>
               <p className="helper-text">
@@ -246,6 +253,7 @@ export default function RecoveryView({
               {!demo && (unavailable || state.connection !== 'connected') && <p role="status" className="helper-text tone-amber">
                 {state.connection !== 'connected' ? 'Conecta con la estación local para calcular.' : unavailable}
               </p>}
+              {snapshot.predictionError && <button className="button subtle" onClick={() => void controller.refresh()}>Reintentar conexión</button>}
               {changed && (
                 <p className="tone-amber helper-text">
                   Parámetros modificados. Recalcula para actualizar el resultado.
@@ -298,8 +306,8 @@ export default function RecoveryView({
                       <Definition label="Origen del cálculo">{number(prediction.context.origin.latitude, 6)}°, {number(prediction.context.origin.longitude, 6)}°</Definition>
                       <Definition label="Altitud inicial · s. n. m.">{number(prediction.context.origin.altitudeM, 1)} m</Definition>
                       <Definition label="Inicio del cálculo · UTC">{prediction.context.originAt}</Definition>
-                      <Definition label="Liberación · s. n. m.">{number(mission.launch.altitudeM + prediction.parameters.targetRelativeAltitudeM, 1)} m</Definition>
-                      <Definition label="Paquete utilizado">{prediction.context.telemetryId ?? 'No aplica · planificación'}</Definition>
+                      <Definition label="Liberación · s. n. m.">{number((prediction.parameters.launch?.altitudeM ?? mission.launch.altitudeM) + prediction.parameters.targetRelativeAltitudeM, 1)} m</Definition>
+                      <Definition label="Paquete utilizado">{prediction.context.inputSource === 'simulated' ? 'Entrada de demostración' : prediction.context.telemetryId ?? 'No aplica · planificación'}</Definition>
                     </>}
                   </dl>
                   <button
@@ -328,7 +336,7 @@ export default function RecoveryView({
                           profile: 'standard_profile', launch_latitude: origin.latitude,
                           launch_longitude: (origin.longitude + 360) % 360, launch_altitude: origin.altitudeM,
                           launch_datetime: prediction.context!.originAt,
-                          burst_altitude: mission.launch.altitudeM + prediction.parameters.targetRelativeAltitudeM,
+                          burst_altitude: (prediction.parameters.launch?.altitudeM ?? mission.launch.altitudeM) + prediction.parameters.targetRelativeAltitudeM,
                           ascent_rate: prediction.parameters.ascentRateMs, descent_rate: prediction.parameters.descentRateMs,
                           dataset: prediction.context!.dataset,
                         }, null, 2))
@@ -346,7 +354,9 @@ export default function RecoveryView({
                   <p className="helper-text">
                     {prediction.source === 'demo'
                       ? 'Predicción simplificada, sin datos meteorológicos ni incertidumbre validada.'
-                      : 'Tawhiri · estimación conservada hasta el siguiente cálculo válido. No confirma recuperación.'}
+                      : prediction.context?.inputSource === 'simulated'
+                        ? 'Tawhiri real con meteorología del proveedor y entradas simuladas. No valida precisión de vuelo.'
+                        : 'Tawhiri · estimación conservada hasta el siguiente cálculo válido. No confirma recuperación.'}
                   </p>
                 </>
               ) : (
@@ -359,6 +369,10 @@ export default function RecoveryView({
           </div>
         </div>
       </div>
+      {planningOpen && <PlanningDialog state={state} controller={controller} parameters={effectiveParameters} settings={settings} now={now}
+        onClose={() => setPlanningOpen(false)} onGenerated={p => {
+          setParameters(p); setPredictionMode('planned'); setLaunchDate(localDatetime(p.launchDatetime!))
+        }} />}
     </Dialog>
   )
 }

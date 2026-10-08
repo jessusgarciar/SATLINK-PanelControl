@@ -82,11 +82,11 @@ Desde `backend`, copia `prediction-settings.example.json` a `prediction-settings
 }
 ```
 
-El ejemplo deja ambas referencias desconocidas y no permite consultar. Cambia `launchAltitudeReference` a `MSL` únicamente después de comprobarla; para continuar desde un GPS, comprueba también su referencia y cambia `gpsAltitudeReference` a `MSL`. En `.env`, configura `SATLINK_PREDICTION_ENABLED=true` y `SATLINK_PREDICTION_REFERENCES_FILE=prediction-settings.local.json`. Reinicia el backend para leer estos ajustes. Ninguna etiqueta realiza conversión de altitud elipsoidal.
+El ejemplo deja ambas referencias desconocidas. Cambia `launchAltitudeReference` a `MSL` únicamente después de comprobarla para usar el origen persistente; para continuar desde un GPS, comprueba también su referencia y cambia `gpsAltitudeReference` a `MSL`. La planificación con origen manual utiliza la referencia MSL declarada explícitamente para ese escenario y no modifica estas referencias de misión. En `.env`, configura `SATLINK_PREDICTION_ENABLED=true` y `SATLINK_PREDICTION_REFERENCES_FILE=prediction-settings.local.json`. Reinicia el backend para leer estos ajustes. Ninguna etiqueta realiza conversión de altitud elipsoidal.
 
 El snapshot entrega ajustes, token CSRF del proceso y próximo instante permitido. El POST exige el token y un `Origin` presente en `SATLINK_ALLOWED_ORIGINS`. Un reinicio requiere refrescar el snapshot para obtener el token nuevo; no habilita acceso compartido ni autenticación de operador.
 
-Selecciona `planned` con hora de lanzamiento explícita o `ascending` con GPS reciente. La selección no modifica la fase física de misión ni activa telecomandos. Las peticiones usan un límite total de 10 s, sin reintentos, y una separación persistente de 60 s también ante fallo. El resultado anterior se conserva. El recorrido y la comparación en SondeHub están en [Predicción Tawhiri](../features/prediction-tawhiri.md).
+Selecciona `planned` con hora de lanzamiento explícita o `ascending` con GPS reciente. El [popup de planificación](../features/prediction-planning.md) permite un origen manual independiente con altitud MSL confirmada; los clientes existentes pueden omitirlo y usar el origen persistente. La selección no modifica la fase física de misión ni activa telecomandos. Las peticiones usan un límite total de 10 s, sin reintentos, y una separación persistente de 60 s también ante fallo. El resultado anterior se conserva. El recorrido y la comparación en SondeHub están en [Predicción Tawhiri](../features/prediction-tawhiri.md).
 
 Para habilitar ChirpStack, configura host, puerto y TLS conforme al broker, añade usuario/contraseña si los requiere y cambia `SATLINK_MQTT_ENABLED=true`. Registra la misión con el mismo `SATLINK_CHIRPSTACK_SOURCE`, Application ID y DevEUI de los uplinks. El consumidor se suscribe a `application/+/device/+/event/up` y la ingestión admite solo dispositivos asociados a una misión registrada; una conexión al broker sin misión asociada no basta para guardar muestras. No copies credenciales a `.env.local` del frontend.
 
@@ -118,3 +118,7 @@ El servidor usa un único proceso y puerto 8000 (ajustable con `SATLINK_PORT`). 
 Para revisar el funcionamiento, consulta el [contrato HTTP/WebSocket](../protocols/frontend-api-v1.md), el [protocolo del Ejercicio 09](../protocols/picaro-full-v1.md) y las entregas de [telemetría](../features/telemetry.md) e [historial](../features/history.md). Un fallo de PostgreSQL no debe producir una muestra publicada sin persistencia; un fallo de MQTT conserva lo ya guardado y permite reintentar la conexión.
 
 El acceso compartido o el despliegue fuera de localhost requieren una etapa posterior de autenticación, autorización, TLS y revisión del origen WebSocket.
+
+## Arranque de la demostración con Tawhiri
+
+El arranque conjunto desde la raíz (`.\scripts\start-dev.ps1`) mantiene la demo del frontend y habilita únicamente sus consultas reales de predicción. No requiere completar la misión física para mostrar ese recorrido. La configuración y sus límites están en [Demostración con Tawhiri](../features/demo-tawhiri.md).

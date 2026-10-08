@@ -120,6 +120,7 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
         {!demo && <p className="mqtt-strip" role="status">{snapshot?.ingestion ? mqttLabels[snapshot.ingestion.status] : 'Estado MQTT no disponible'} · La conexión MQTT no confirma recepción de radio.</p>}
         {demo && (
           <p className="demo-disclosure">
+            {controller.gateway.realPrediction && <strong>Predicción mediante Tawhiri real con entradas simuladas. </strong>}
             DATOS DE EJEMPLO · Sin enlace con la cápsula ni comandos físicos.
           </p>
         )}
