@@ -21,23 +21,24 @@
 }
 :root {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
-  color: #e2e8f0;
-  background: #060a12;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  color-scheme: dark;
-  --bg: #060a12;
-  --surface: #0d1625;
-  --surface-deep: #04080f;
-  --border: #00e5ff20;
-  --cyan: #00e5ff;
-  --green: #4ade80;
-  --amber: #fbbf24;
-  --red: #f87171;
-  --text: #e2e8f0;
-  --muted: #8c9cb2;
-  --subtle: #74849c;
+
+  color: #1e293b;
+  background: #f4f7fb;
+  color-scheme: light;
+
+  --bg: #f4f7fb;
+  --surface: #ffffff;
+  --surface-deep: #eef2f7;
+  --border: #dbe3ee;
+
+  --cyan: #2563eb;
+  --green: #16a34a;
+  --amber: #d97706;
+  --red: #dc2626;
+
+  --text: #1e293b;
+  --muted: #64748b;
+  --subtle: #94a3b8;
 }
 * {
   box-sizing: border-box;
