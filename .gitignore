@@ -1,5 +1,5 @@
 # Herramientas, PostgreSQL y datos exclusivos de esta computadora
-/.local/
+.local/
 
 # Skills
 /.agents/skills/
@@ -22,6 +22,7 @@ dist-ssr/
 .venv/
 venv/
 env/
+env
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -35,8 +36,9 @@ coverage/
 
 # Variables de entorno y material privado de autenticación
 .env
-/backend/mission.local.json
-/backend/prediction-settings.local.json
+.envrc
+mission.local.json
+prediction-settings.local.json
 .env.*
 !.env.example
 !.env.*.example
