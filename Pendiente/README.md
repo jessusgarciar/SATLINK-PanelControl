@@ -4,8 +4,6 @@ SATLINK es una plataforma para centralizar, supervisar y visualizar datos de tel
 
 El proyecto utiliza React y TypeScript con Vite en el frontend, y Python con FastAPI y PostgreSQL en el backend. Se organiza con arquitectura limpia para mantener las reglas del dominio y los casos de uso independientes de las herramientas externas.
 
-Los comandos de esta guía parten de `SATLINK-PanelControl/Pendiente`. Esta webapp tiene frontend, backend, entorno y base propios. Consulta [la organización del repositorio](../README.md).
-
 ## Estado actual
 
 El frontend implementa el panel de telemetría, trayectoria GPS, cuatro gráficas, recuperación/predicción y bitácora de comandos, siguiendo el Figma del equipo. Incluye una demostración interactiva claramente identificada y adaptadores HTTP/WebSocket para la estación real.
@@ -179,9 +177,3 @@ El árbol muestra las carpetas de trabajo; además existen manifiestos, archivos
 `domain` aloja conceptos y contratos independientes de herramientas. `application` coordina casos de uso mediante puertos. `infrastructure` aloja adaptadores para HTTP, WebSocket, PostgreSQL, MQTT y servicios externos. `presentation` aloja las interfaces de usuario y API. `app` en el frontend y `bootstrap` en el backend componen las capas.
 
 Las reglas de dependencia se explican en [Arquitectura](docs/architecture/README.md). Las carpetas [Scrum](docs/scrum/README.md) guardarán backlog, documentación de sprints, reviews, retrospectivas y criterios de terminado; por ahora no contienen historias, estimaciones ni planes de sprint. `docs/protocols` contiene el contrato propuesto del panel y un ejemplo de snapshot; `scripts` se reserva para herramientas del equipo.
-
-## Verificación y pendientes
-
-La preparación del repositorio, exclusiones y pasos para revisar un commit están en [Preparación para Git](docs/setup/git.md). Las reglas se mantienen desde la raíz en `.gitignore`, `.gitattributes` y `.editorconfig`.
-
-Las versiones instaladas se registran en [Entorno verificado](docs/setup/environment.md). La entrega actual se documenta en [Telemetría](docs/features/telemetry.md), [Historial](docs/features/history.md) y [Verificación PICARO](docs/features/picaro-verification.md). Quedan pendientes autenticación para acceso compartido, telecomandos, predicción Tawhiri y validación con hardware. Las pruebas sintéticas no acreditan recepción de radio ni vuelo real. No se implementaron cambios de firmware.

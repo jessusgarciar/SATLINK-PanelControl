@@ -30,7 +30,10 @@ from app.presentation.schemas.prediction import PredictionDTO, PredictionRequest
 
 def create_app(settings: Settings, store: PostgresStore | None = None,
                publisher: TelemetryHub | None = None, *,
-               prediction_provider: PredictionProvider | None = None) -> FastAPI:
+               prediction_provider: PredictionProvider | None = None,
+               mqtt_topic: str | None = None) -> FastAPI:
+    if settings.mqtt_enabled and not mqtt_topic:
+        raise ValueError("El topic MQTT de la misión es obligatorio cuando MQTT está habilitado")
     repository = store if store is not None else PostgresStore(settings.database_url)
     hub = publisher if publisher is not None else TelemetryHub()
     ingestor = IngestTelemetry(repository, hub, settings.source, ChirpStackDecoder(decode_payload))
@@ -66,7 +69,7 @@ def create_app(settings: Settings, store: PostgresStore | None = None,
             if settings.mqtt_enabled:
                 task = asyncio.create_task(consume(settings.mqtt_host, settings.mqtt_port,
                     settings.mqtt_username, settings.mqtt_password, settings.mqtt_tls,
-                    settings.mqtt_client_id, ingestor.execute, ingestion.update))
+                    settings.mqtt_client_id, mqtt_topic, ingestor.execute, ingestion.update))
             yield
         finally:
             try:
