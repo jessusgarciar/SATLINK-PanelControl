@@ -29,7 +29,7 @@ class IngestTelemetry:
             "receivedAt": event.received_at.isoformat().replace("+00:00", "Z"),
             "frameCounter": event.frame_counter,
             "relativeAltitudeM": None if altitude is None else altitude - mission.snapshot["launch"]["altitudeM"],
-            "altitudeBarometricM": None, "verticalSpeedMs": None,
+            "altitudeBarometricM": None, "verticalSpeedMs": event.measurements.get("verticalSpeedMs"),
         }
         if not await self.store.persist(mission, event, telemetry):
             return None

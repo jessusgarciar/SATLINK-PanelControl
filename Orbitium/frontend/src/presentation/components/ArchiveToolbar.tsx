@@ -36,9 +36,9 @@ export default function ArchiveToolbar({ gateway, selected, setSelected, range, 
       {exporting && <button className="text-button" onClick={() => { abort.current?.abort(); setExporting(false) }}>Cancelar descarga</button>}
       <button className="button subtle" disabled={!range || loading} onClick={openHistory}>▶ Histórico</button>
     </div>
-    <p className="archive-caption">Filtro para mapa, gráficas y CSV. Las tarjetas muestran la última recepción. {gateway.mode === 'demo' && 'Archivo limitado a la ventana del simulador.'}</p>
+    <p className="archive-caption">Filtro para mapa, gráficas y CSV. Las tarjetas conservan la última lectura disponible de cada campo. {gateway.mode === 'demo' && 'Archivo limitado a la ventana del simulador.'}</p>
     {range && <p className="archive-caption">Gráficas: {seriesCount} muestras · Trayectoria: {trackCount} posiciones GPS · CSV: todos los registros del intervalo.</p>}
-    {range && <p className="archive-caption">Intervalo visual: {range.from ? new Date(range.from).toLocaleString() : 'Inicio'} → {new Date(range.to).toLocaleString()}.</p>}
+    {range && <p className="archive-caption">Hora de recepción: {range.from ? new Date(range.from).toLocaleString() : 'Inicio'} → {new Date(range.to).toLocaleString()}.</p>}
     {(error || exportError) && <p role="alert" className="tone-amber">{exportError ?? error} {error && 'Se conserva el último intervalo consultado.'}</p>}
   </section>
 }

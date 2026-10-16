@@ -6,6 +6,7 @@ import { GridComponent, TooltipComponent, LegendComponent, AriaComponent } from 
 import { CanvasRenderer } from 'echarts/renderers'
 import type { EChartsOption, LineSeriesOption } from 'echarts'
 import type { Telemetry } from '../../domain/mission.ts'
+import { telemetryPoints } from '../readings.ts'
 import { SectionTitle } from './ui.tsx'
 
 echarts.use([
@@ -73,8 +74,9 @@ const Chart = memo(function Chart({
     const series: LineSeriesOption[] = config.series.map((s) => ({
       name: s.label,
       type: 'line',
-      showSymbol: false,
-      connectNulls: false,
+      showSymbol: true,
+      symbolSize: 4,
+      connectNulls: true,
       sampling: 'lttb',
       yAxisIndex: s.axis ?? 0,
       lineStyle: { width: 1.6, color: s.color },
@@ -87,10 +89,7 @@ const Chart = memo(function Chart({
             ]),
           }
         : undefined,
-      data: points.map((t) => [
-        Date.parse(t.receivedAt),
-        typeof t[s.key] === 'number' ? Number(t[s.key]) * (s.scale ?? 1) : null,
-      ]),
+      data: telemetryPoints(points, s.key, s.scale),
     }))
     const axis = (unit: string) => ({
       type: 'value' as const,
@@ -161,7 +160,7 @@ const Chart = memo(function Chart({
   return (
     <section className="panel chart-panel">
       <SectionTitle>{config.title}</SectionTitle>
-      {samples.length ? (
+      {config.series.some(s => telemetryPoints(samples, s.key).length > 0) ? (
         <ReactEChartsCore
           echarts={echarts}
           option={option}

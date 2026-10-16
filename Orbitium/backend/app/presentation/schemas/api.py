@@ -52,13 +52,13 @@ class TelemetryDTO(DTO):
     frameCounter: Annotated[int, Field(ge=0, le=4294967295)]
     latitude: Annotated[float, Field(ge=-90, le=90)] | None
     longitude: Annotated[float, Field(ge=-180, le=180)] | None
-    altitudeGpsM: Annotated[float, Field(ge=-500, le=32767)] | None
+    altitudeGpsM: Annotated[float, Field(ge=-500, le=65534)] | None
     relativeAltitudeM: float | None
     altitudeBarometricM: None
-    verticalSpeedMs: None
+    verticalSpeedMs: Annotated[float, Field(ge=-200, le=200)] | None
     temperatureC: Annotated[float, Field(ge=-127, le=127)] | None
     pressureHpa: Annotated[float, Field(ge=5, le=1270)] | None
-    humidityPct: None
+    humidityPct: Annotated[float, Field(ge=0, le=100)] | None
     batteryV: Annotated[float, Field(ge=0, le=5.08)] | None
     rssiDbm: Annotated[float, Field(ge=-200, le=20)] | None
     snrDb: Annotated[float, Field(ge=-40, le=40)] | None

@@ -55,6 +55,11 @@ def main() -> None:
     commands.add_parser("serve")
     init = commands.add_parser("init-mission")
     init.add_argument("--file", type=Path, required=True)
+    check = commands.add_parser("check-live", help="Verificar MQTT, WebSocket, historial y CSV con uplinks nuevos")
+    check.add_argument("--file", type=Path, default=Path(__file__).resolve().parents[2] / "mission.local.json")
+    check.add_argument("--samples", type=int, default=10)
+    check.add_argument("--timeout", type=float, default=600)
+    check.add_argument("--report", type=Path)
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)
     settings = Settings.from_env()
@@ -64,8 +69,34 @@ def main() -> None:
         server = uvicorn.Server(uvicorn.Config(create_app(settings, mqtt_topic=mqtt_topic), host="127.0.0.1",
                                                port=settings.port, workers=1, proxy_headers=False))
         run_async(server.serve())
-    else:
+    elif args.command == "init-mission":
         run_async(initialize(settings, args.file))
+    else:
+        from app.bootstrap.check_live import LiveCheckError, check_live
+        report = {}
+        try:
+            if args.report is not None and not args.report.parent.is_dir():
+                raise LiveCheckError("La carpeta del informe no existe")
+            mission = validate_mission(json.loads(args.file.read_text(encoding="utf-8-sig")), settings)
+            run_async(check_live(settings, mission, args.samples, args.timeout, report))
+        except KeyboardInterrupt:
+            report.update(status="cancelled", reason="Comprobación interrumpida por el operador")
+        except Exception as exc:
+            timeout_reason = "Tiempo agotado esperando conexión con los servicios locales"
+            if report.get("checks", {}).get("mqttSubscription"):
+                timeout_reason = (
+                    "Conexión MQTT aceptada, pero no llegaron uplinks nuevos del dispositivo durante la observación"
+                    if not report.get("mqttEvents") else
+                    "Llegaron uplinks MQTT, pero no se completó su correlación con WebSocket y el archivo")
+            reason = (str(exc) if isinstance(exc, LiveCheckError) else
+                      timeout_reason if isinstance(exc, TimeoutError) else
+                      f"Fallo de comprobación ({type(exc).__name__}); revisar servicios y logs locales")
+            report.update(status="failed", reason=reason)
+        if args.report is not None and args.report.parent.is_dir():
+            args.report.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+        if report["status"] != "passed":
+            raise SystemExit(130 if report["status"] == "cancelled" else 1)
 
 
 if __name__ == "__main__":

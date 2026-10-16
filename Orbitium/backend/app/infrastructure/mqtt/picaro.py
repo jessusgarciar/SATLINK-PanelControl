@@ -1,6 +1,7 @@
 """Perfil fijo de telemetría del Ejercicio 09. Aviso MIT en THIRD_PARTY_NOTICES.md."""
 import struct
 from app.domain.entities.telemetry import JsonObject
+from app.infrastructure.mqtt.vuelo import decode_vuelo
 
 CODEC_VERSION = "picaro-full-19-v1"
 
@@ -10,6 +11,8 @@ def bounded(value: float, lower: float, upper: float) -> float | None:
 
 
 def decode_payload(payload: bytes, fport: int) -> JsonObject:
+    if type(fport) is int and fport == 17:
+        return decode_vuelo(payload)
     # Se agregó esta validación porque en el Ejercicio 09 el payload contiene 19 bytes.
     if isinstance(fport, bool) or fport != 10 or len(payload) != 19:
         raise ValueError("PICARO FULL requiere fPort 10 y exactamente 19 bytes")

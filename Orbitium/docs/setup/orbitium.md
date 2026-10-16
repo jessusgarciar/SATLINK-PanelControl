@@ -43,6 +43,8 @@ El arranque Live muestra disponibilidad del backend por HTTP; el estado MQTT rep
 
 Los comandos reales siguen deshabilitados (`canCommand=false`). La recepción no demuestra que PING o RELEASE estén implementados ni habilita su envío.
 
+Para verificar automáticamente uplinks nuevos contra WebSocket, CSV e historial, ejecutar `./scripts/check-live.ps1` en otra terminal desde `Orbitium`. El informe y el diagnóstico se explican en [Aceptación de telemetría del LilyGO](../features/live-telemetry-check.md).
+
 ## Predicción
 
 La predicción real mantiene la bandera existente `SATLINK_PREDICTION_ENABLED=false`. Para habilitarla posteriormente, confirmar las referencias de altitud del GPS y configurar las referencias por misión según [la guía de Tawhiri](../features/prediction-tawhiri.md). La altitud de lanzamiento fue proporcionada como MSL; el datum del GPS sigue pendiente.

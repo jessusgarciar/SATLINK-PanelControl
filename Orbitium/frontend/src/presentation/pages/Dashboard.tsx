@@ -1,6 +1,7 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import type { MissionController } from '../../application/MissionController.ts'
 import { dataAgeSeconds, latestSample } from '../../domain/mission.ts'
+import { latestReadings } from '../readings.ts'
 import type { MapSettings } from '../components/MissionMap.tsx'
 import { ageLabel, clock, duration, km, number, phaseLabels } from '../format.ts'
 import { useMission, useNow } from '../hooks/useMission.ts'
@@ -34,6 +35,11 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
   useEffect(() => { if (archive.error) controller.recordTechnical('Archivo: ' + archive.error) }, [controller, archive.error])
   const mission = snapshot?.mission
   const latest = latestSample(snapshot?.telemetry ?? [])
+  const { values: readings, observedAt } = useMemo(
+    () => latestReadings(snapshot?.telemetry ?? [], mission?.id ?? ''), [snapshot?.telemetry, mission?.id],
+  )
+  const readingStale = (key: keyof typeof observedAt) => !observedAt[key] ||
+    now - Date.parse(observedAt[key]) > (mission?.staleAfterSeconds ?? 15) * 1000
   const age = dataAgeSeconds(latest, now)
   const stale = age === null || age > (mission?.staleAfterSeconds ?? 15)
   const demo = controller.gateway.mode === 'demo'
@@ -41,10 +47,10 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
     ? ((mission.endedAt ? Date.parse(mission.endedAt) : now) - Date.parse(mission.startedAt)) / 1000
     : null
   const progress =
-    latest?.relativeAltitudeM != null && mission
+    readings?.relativeAltitudeM != null && mission
       ? Math.max(
           0,
-          Math.min(100, (latest.relativeAltitudeM / mission.targetRelativeAltitudeM) * 100),
+          Math.min(100, (readings.relativeAltitudeM / mission.targetRelativeAltitudeM) * 100),
         )
       : null
   const releaseEvent = snapshot?.events.find((event) => event.type === 'release')
@@ -168,61 +174,61 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
               <DataCard
                 label="Vel. ascenso/desc"
                 value={
-                  latest?.verticalSpeedMs != null
-                    ? (latest.verticalSpeedMs > 0 ? '+' : '') + number(latest.verticalSpeedMs)
+                  readings?.verticalSpeedMs != null
+                    ? (readings.verticalSpeedMs > 0 ? '+' : '') + number(readings.verticalSpeedMs)
                     : '—'
                 }
                 unit="m/s"
-                detail="Derivada · backend"
+                detail="Reportada por el dispositivo"
                 tone={mission.phase === 'descending' ? 'amber' : 'green'}
-                stale={stale}
+                stale={readingStale('verticalSpeedMs')}
               />
               <DataCard
                 label="RSSI LoRaWAN"
-                value={number(latest?.rssiDbm, 0)}
+                value={number(readings?.rssiDbm, 0)}
                 unit="dBm"
-                detail={'SNR ' + number(latest?.snrDb) + ' dB · ' + mission.region}
+                detail={'SNR ' + number(readings?.snrDb) + ' dB · ' + mission.region}
                 tone="green"
-                stale={stale}
+                stale={readingStale('rssiDbm')}
               />
             </section>
             <section className="metrics-secondary" aria-label="Lecturas de sensores">
               <DataCard
                 label="Altitud GPS"
-                value={km(latest?.altitudeGpsM)}
+                value={km(readings?.altitudeGpsM)}
                 unit="km"
-                detail={'s. n. m. · Baro ' + km(latest?.altitudeBarometricM, 2) + ' km'}
+                detail={'s. n. m. · Baro ' + km(readings?.altitudeBarometricM, 2) + ' km'}
                 tone="cyan"
-                stale={stale}
+                stale={readingStale('altitudeGpsM')}
               />
               <DataCard
                 label="Temp. interna"
-                value={number(latest?.temperatureC)}
+                value={number(readings?.temperatureC)}
                 unit="°C"
                 detail="Sensor de la cápsula"
-                stale={stale}
+                stale={readingStale('temperatureC')}
               />
               <DataCard
                 label="Humedad rel."
-                value={number(latest?.humidityPct)}
+                value={number(readings?.humidityPct)}
                 unit="%"
                 detail="Humedad relativa"
-                stale={stale}
+                stale={readingStale('humidityPct')}
               />
               <DataCard
                 label="Presión atm."
-                value={number(latest?.pressureHpa)}
+                value={number(readings?.pressureHpa)}
                 unit="hPa"
                 detail="Presión ambiente"
-                stale={stale}
+                stale={readingStale('pressureHpa')}
               />
               <DataCard
                 label="Voltaje batería"
-                value={number(latest?.batteryV, 3)}
+                value={number(readings?.batteryV, 3)}
                 unit="V"
                 detail="Medición de alimentación"
-                tone={latest?.batteryV != null && latest.batteryV < 3.4 ? 'amber' : 'green'}
-                stale={stale}
+                tone={readings?.batteryV != null && readings.batteryV < 3.4 ? 'amber' : 'green'}
+                stale={readingStale('batteryV')}
               />
               <DataCard
                 label="Último dato"
@@ -238,16 +244,16 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
             <section className="panel device-panel" aria-label="Dispositivo y enlace">
               <SectionTitle>GNSS · Alimentación · Radio {demo ? 'SIMULADOS' : ''}</SectionTitle>
               <dl className="device-grid">
-                <Definition label="GPS activo">{flag(latest?.device?.gpsActive)}</Definition>
-                <Definition label="Fix GPS">{flag(latest?.device?.gpsFix)}</Definition>
-                <Definition label="Satélites">{number(latest?.device?.satellites, 0)}</Definition>
-                <Definition label="Batería reportada">{number(latest?.device?.batteryPct, 0)} %</Definition>
-                <Definition label="Cargando">{flag(latest?.device?.charging)}</Definition>
-                <Definition label="Alimentación USB">{flag(latest?.device?.usbPowered)}</Definition>
-                <Definition label="Gateway">{latest?.radio?.gatewayId ?? '—'}</Definition>
-                <Definition label="Frecuencia">{latest?.radio?.frequencyHz == null ? '—' : number(latest.radio.frequencyHz / 1e6, 3) + ' MHz'}</Definition>
-                <Definition label="Data Rate">{latest?.radio?.dataRate == null ? '—' : 'DR' + latest.radio.dataRate}</Definition>
-                <Definition label="Puerto">{number(latest?.radio?.fPort, 0)}</Definition>
+                <Definition label="GPS activo">{flag(readings?.device?.gpsActive)}</Definition>
+                <Definition label="Fix GPS">{flag(readings?.device?.gpsFix)}</Definition>
+                <Definition label="Satélites">{number(readings?.device?.satellites, 0)}</Definition>
+                <Definition label="Batería reportada">{number(readings?.device?.batteryPct, 0)} %</Definition>
+                <Definition label="Cargando">{flag(readings?.device?.charging)}</Definition>
+                <Definition label="Alimentación USB">{flag(readings?.device?.usbPowered)}</Definition>
+                <Definition label="Gateway">{readings?.radio?.gatewayId ?? '—'}</Definition>
+                <Definition label="Frecuencia">{readings?.radio?.frequencyHz == null ? '—' : number(readings.radio.frequencyHz / 1e6, 3) + ' MHz'}</Definition>
+                <Definition label="Data Rate">{readings?.radio?.dataRate == null ? '—' : 'DR' + readings.radio.dataRate}</Definition>
+                <Definition label="Puerto">{number(readings?.radio?.fPort, 0)}</Definition>
               </dl>
             </section>
             <ArchiveToolbar gateway={controller.gateway} selected={windowKey} setSelected={(key) => { setWindowKey(key); controller.recordTechnical('Ventana: ' + key) }} range={archive.data} total={archive.data?.total ?? null} seriesCount={archive.data?.series.length ?? 0} trackCount={archive.data?.track.length ?? 0} loading={archive.loading} error={archive.error} onActivity={controller.recordTechnical} openHistory={() => { if (archive.data) { controller.recordTechnical('Reproducción histórica: intervalo fijado · ' + archive.data.to); setReplayRange({ from: archive.data.from, to: archive.data.to }) } }} />
@@ -264,10 +270,10 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
                     <MissionMap snapshot={{ ...snapshot, telemetry: archive.data?.track ?? [] }} settings={mapSettings} />
                   </Suspense>
                   <dl className="coordinates-grid">
-                    <Definition label="Lat">{number(latest?.latitude, 5)}°</Definition>
-                    <Definition label="Lon">{number(latest?.longitude, 5)}°</Definition>
+                    <Definition label="Lat">{number(readings?.latitude, 5)}°</Definition>
+                    <Definition label="Lon">{number(readings?.longitude, 5)}°</Definition>
                     <Definition label="Alt GPS · s. n. m.">
-                      {km(latest?.altitudeGpsM)} km
+                      {km(readings?.altitudeGpsM)} km
                     </Definition>
                     <Definition label="Fase">{phaseLabels[mission.phase]}</Definition>
                   </dl>
@@ -288,7 +294,7 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
                     </div>
                     <dl className="altitude-details">
                       <Definition label="Altura sobre lanzamiento" tone="cyan">
-                        {km(latest?.relativeAltitudeM)} km
+                        {km(readings?.relativeAltitudeM)} km
                       </Definition>
                       <Definition label="Progreso">{number(progress)}%</Definition>
                       <Definition label="Objetivo relativo">
