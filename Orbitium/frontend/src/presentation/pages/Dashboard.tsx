@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import type { MissionController } from '../../application/MissionController.ts'
 import { dataAgeSeconds, latestSample } from '../../domain/mission.ts'
 import { latestReadings } from '../readings.ts'
+import { batteryTone, rssiTone, temperatureTone } from '../metricTones.ts'
 import type { MapSettings } from '../components/MissionMap.tsx'
 import { ageLabel, clock, duration, km, number, phaseLabels } from '../format.ts'
 import { useMission, useNow } from '../hooks/useMission.ts'
@@ -28,6 +29,7 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
   const state = useMission(controller)
   const now = useNow()
   const [recoveryOpen, setRecoveryOpen] = useState(false)
+  const [missionMenuOpen, setMissionMenuOpen] = useState(false)
   const [windowKey, setWindowKey] = useState<WindowKey>('1h')
   const [replayRange, setReplayRange] = useState<TimeRange | null>(null)
   const snapshot = state.snapshot
@@ -60,7 +62,20 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
         Saltar al panel de telemetría
       </a>
       <header className="site-header">
-        <div className="header-inner">
+        <div className={'header-inner' + (missionMenuOpen ? ' mission-menu-open' : '')}>
+          <div className="header-mobile-top">
+            <img className="mobile-brand-logo" src={satlinkLogo} alt="SATLINK Orbitium" />
+            <button
+              className="mission-menu-toggle"
+              type="button"
+              aria-expanded={missionMenuOpen}
+              aria-controls="mission-header-menu"
+              onClick={() => setMissionMenuOpen((open) => !open)}
+            >
+              <span>{missionMenuOpen ? 'CERRAR' : 'MENÚ'}</span>
+              <i aria-hidden="true" />
+            </button>
+          </div>
           <div className="brand">
             <div>
               <h1>
@@ -70,21 +85,24 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
               <p>ESTACIÓN TERRENA · CONTROL DE MISIÓN</p>
             </div>
           </div>
-          <div className="header-actions">
-            <label className="source-picker">
-              <span className="sr-only">Fuente de datos</span>
-              <select
-                value={controller.gateway.mode}
-                onChange={(e) => onModeChange(e.target.value as 'demo' | 'live')}
-              >
-                <option value="demo">DEMOSTRACIÓN</option>
-                <option value="live">ESTACIÓN REAL</option>
-              </select>
-            </label>
-            {mission && <PhaseChip phase={mission.phase} />}
-            <span className="mission-clock">
-              T+ <strong>{duration(elapsed)}</strong>
-            </span>
+          <div className="header-menu" id="mission-header-menu">
+            <p className="mobile-menu-heading">CONTROL DE MISIÓN</p>
+            <div className="header-actions">
+              <label className="source-picker">
+                <span className="sr-only">Fuente de datos</span>
+                <select
+                  value={controller.gateway.mode}
+                  onChange={(e) => onModeChange(e.target.value as 'demo' | 'live')}
+                >
+                  <option value="demo">DEMOSTRACIÓN</option>
+                  <option value="live">ESTACIÓN REAL</option>
+                </select>
+              </label>
+              {mission && <PhaseChip phase={mission.phase} />}
+              <span className="mission-clock">
+                T+ <strong>{duration(elapsed)}</strong>
+              </span>
+            </div>
           </div>
         </div>
       </header>
@@ -188,7 +206,7 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
                 value={number(readings?.rssiDbm, 0)}
                 unit="dBm"
                 detail={'SNR ' + number(readings?.snrDb) + ' dB · ' + mission.region}
-                tone="green"
+                tone={rssiTone(readings?.rssiDbm)}
                 stale={readingStale('rssiDbm')}
               />
             </section>
@@ -206,6 +224,7 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
                 value={number(readings?.temperatureC)}
                 unit="°C"
                 detail="Sensor de la cápsula"
+                tone={temperatureTone(readings?.temperatureC)}
                 stale={readingStale('temperatureC')}
               />
               <DataCard
@@ -213,6 +232,7 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
                 value={number(readings?.humidityPct)}
                 unit="%"
                 detail="Humedad relativa"
+                tone="blue"
                 stale={readingStale('humidityPct')}
               />
               <DataCard
@@ -220,6 +240,7 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
                 value={number(readings?.pressureHpa)}
                 unit="hPa"
                 detail="Presión ambiente"
+                tone="cyan"
                 stale={readingStale('pressureHpa')}
               />
               <DataCard
@@ -227,7 +248,7 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
                 value={number(readings?.batteryV, 3)}
                 unit="V"
                 detail="Medición de alimentación"
-                tone={readings?.batteryV != null && readings.batteryV < 3.4 ? 'amber' : 'green'}
+                tone={batteryTone(readings?.batteryV)}
                 stale={readingStale('batteryV')}
               />
               <DataCard
@@ -256,7 +277,6 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
                 <Definition label="Puerto">{number(readings?.radio?.fPort, 0)}</Definition>
               </dl>
             </section>
-            <ArchiveToolbar gateway={controller.gateway} selected={windowKey} setSelected={(key) => { setWindowKey(key); controller.recordTechnical('Ventana: ' + key) }} range={archive.data} total={archive.data?.total ?? null} seriesCount={archive.data?.series.length ?? 0} trackCount={archive.data?.track.length ?? 0} loading={archive.loading} error={archive.error} onActivity={controller.recordTechnical} openHistory={() => { if (archive.data) { controller.recordTechnical('Reproducción histórica: intervalo fijado · ' + archive.data.to); setReplayRange({ from: archive.data.from, to: archive.data.to }) } }} />
             <div className="telemetry-layout">
               <div className="position-column">
                 <section className="panel map-panel">
@@ -326,6 +346,7 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
               <p className="archive-caption">Conexiones y errores del panel. Separada de los eventos físicos de misión.</p>
               <ol className="technical-log">{state.technicalLog.length ? state.technicalLog.map((entry) => <li key={entry.id}><time dateTime={entry.at}>{clock(entry.at)}</time> {entry.message}</li>) : <li>Sin cambios de conexión registrados.</li>}</ol>
             </section>
+            <ArchiveToolbar gateway={controller.gateway} selected={windowKey} setSelected={(key) => { setWindowKey(key); controller.recordTechnical('Ventana: ' + key) }} range={archive.data} total={archive.data?.total ?? null} seriesCount={archive.data?.series.length ?? 0} trackCount={archive.data?.track.length ?? 0} loading={archive.loading} error={archive.error} onActivity={controller.recordTechnical} openHistory={() => { if (archive.data) { controller.recordTechnical('Reproducción histórica: intervalo fijado · ' + archive.data.to); setReplayRange({ from: archive.data.from, to: archive.data.to }) } }} />
             <section className="panel mission-config" aria-label="Configuración de misión">
               <dl>
                 <Definition label="Altitud objetivo">

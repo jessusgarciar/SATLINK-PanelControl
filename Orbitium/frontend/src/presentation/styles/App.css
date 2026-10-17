@@ -66,6 +66,26 @@
   gap: 16px;
   flex-wrap: wrap;
 }
+.header-menu {
+  display: flex;
+  align-items: center;
+}
+.header-mobile-top,
+.mobile-menu-heading {
+  display: none;
+}
+.mission-menu-toggle {
+  border: 1px solid #00e5ff40;
+  border-radius: 4px;
+  background: #00e5ff0d;
+  color: var(--cyan);
+  padding: 9px 11px;
+  font-size: 9px;
+  letter-spacing: 1px;
+}
+.mission-menu-toggle i {
+  display: none;
+}
 .source-picker select {
   border: 1px solid #fbbf2428;
   background: var(--surface-deep);
@@ -188,7 +208,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  min-height: 92px;
+  min-height: 95px;
   transition: border-color 0.2s;
 }
 .data-card h2 {
@@ -203,7 +223,7 @@
   display: flex;
   align-items: baseline;
   gap: 5px;
-  font-size: 22px;
+  font-size: 22.7px;
   line-height: 1.2;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -219,7 +239,7 @@
   line-height: 1.5;
 }
 .metrics-secondary .data-value {
-  font-size: 20px;
+  font-size: 20.6px;
 }
 .stale-card {
   border-color: #fbbf2440;
@@ -229,6 +249,9 @@
 }
 .tone-cyan {
   color: var(--cyan);
+}
+.tone-blue {
+  color: #60a5fa;
 }
 .tone-green {
   color: var(--green);
@@ -514,6 +537,12 @@
 }
 .chart-panel .section-title {
   margin: 0 4px 12px;
+}
+.chart-hint {
+  margin: -4px 4px 4px;
+  color: var(--subtle);
+  font-size: 9px;
+  line-height: 1.5;
 }
 .chart-empty,
 .map-loading {
@@ -1042,7 +1071,7 @@
   }
   .data-value,
   .metrics-secondary .data-value {
-    font-size: 18px;
+    font-size: 18.5px;
   }
   .mission-config dl {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1076,10 +1105,116 @@
     gap: 4px;
   }
 }
+@media (max-width: 600px) {
+  .header-inner {
+    display: block;
+    padding: 10px 12px;
+  }
+  .header-mobile-top {
+    min-height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+  .mobile-brand-logo {
+    width: 44px;
+    height: 36px;
+    object-fit: contain;
+    filter: brightness(0) saturate(100%) invert(72%) sepia(98%) saturate(2160%) hue-rotate(143deg) brightness(103%) contrast(104%);
+  }
+  .mission-menu-toggle {
+    position: absolute;
+    right: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 36px;
+  }
+  .mission-menu-toggle i,
+  .mission-menu-toggle i::after {
+    width: 12px;
+    height: 1px;
+    display: block;
+    background: currentColor;
+    content: '';
+  }
+  .mission-menu-toggle i::after {
+    transform: translateY(4px);
+  }
+  .brand {
+    display: block;
+    margin: 4px 0 2px;
+    text-align: center;
+  }
+  .brand h1 {
+    justify-content: center;
+    font-size: 13px;
+    letter-spacing: 2px;
+  }
+  .brand-logo {
+    display: none;
+  }
+  .brand p {
+    margin-top: 6px;
+    font-size: 8px;
+    letter-spacing: 1px;
+  }
+  .header-menu {
+    display: none;
+    margin-top: 10px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+  }
+  .mission-menu-open .header-menu {
+    display: block;
+  }
+  .mobile-menu-heading {
+    display: block;
+    margin-bottom: 10px;
+    color: var(--subtle);
+    font-size: 8px;
+    letter-spacing: 1.5px;
+    text-align: center;
+  }
+  .header-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
+  }
+  .header-actions > * {
+    min-height: 38px;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface-deep);
+  }
+  .source-picker select {
+    width: 100%;
+    max-width: none;
+    border: 0;
+    padding: 2px 0;
+    background: transparent;
+    text-align: right;
+    font-size: 9px;
+  }
+  .phase-chip {
+    justify-content: flex-start;
+    font-size: 9px;
+  }
+  .mission-clock {
+    font-size: 10px;
+  }
+}
 @media (max-width: 480px) {
   .header-inner {
-    padding: 14px 12px;
-    gap: 14px;
+    padding: 8px 12px;
   }
   .brand h1 {
     font-size: 14px;
@@ -1095,9 +1230,7 @@
     margin-right: 6px;
   }
   .header-actions {
-    width: 100%;
-    gap: 9px;
-    justify-content: space-between;
+    width: auto;
   }
   .source-picker select {
     font-size: 8px;
@@ -1120,7 +1253,7 @@
     padding: 12px;
   }
   .data-card {
-    min-height: 86px;
+    min-height: 89px;
     gap: 6px;
   }
   .data-card h2 {
@@ -1132,7 +1265,7 @@
   }
   .data-value,
   .metrics-secondary .data-value {
-    font-size: 16px;
+    font-size: 16.5px;
   }
   .section-title {
     font-size: 10px;

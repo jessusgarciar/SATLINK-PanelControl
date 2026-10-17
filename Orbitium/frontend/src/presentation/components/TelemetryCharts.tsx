@@ -62,6 +62,52 @@ const configs: { title: string; unit: string; series: SeriesConfig[]; secondUnit
     series: [{ key: 'batteryV', label: 'Batería', color: colors.green, area: true }],
   },
 ]
+const chartMetricKeys = [...new Set(configs.flatMap((config) => config.series.map((series) => series.key)))]
+
+function median(values: number[]): number | null {
+  if (values.length === 0) return null
+  const sorted = [...values].sort((a, b) => a - b)
+  const middle = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle]
+}
+
+function chartInterval(samples: Telemetry[]): number {
+  const times = samples.map((sample) => Date.parse(sample.receivedAt)).filter(Number.isFinite)
+  const span = times.length > 1 ? Math.max(...times) - Math.min(...times) : 0
+  if (span <= 20 * 60_000) return 20_000
+  if (span <= 2 * 60 * 60_000) return 3 * 60_000
+  return 4 * 60_000
+}
+
+function aggregateSamples(samples: Telemetry[], interval: number): Telemetry[] {
+  const buckets = new Map<number, Telemetry[]>()
+  for (const sample of samples) {
+    const time = Date.parse(sample.receivedAt)
+    if (!Number.isFinite(time)) continue
+    const start = Math.floor(time / interval) * interval
+    const bucket = buckets.get(start) ?? []
+    bucket.push(sample)
+    buckets.set(start, bucket)
+  }
+  return [...buckets.entries()].sort(([a], [b]) => a - b).map(([start, bucket]) => {
+    const aggregated: Telemetry = { ...bucket[0], receivedAt: new Date(start).toISOString() }
+    for (const key of chartMetricKeys) {
+      const values = bucket.flatMap((sample) => {
+        const value = sample[key]
+        return typeof value === 'number' && Number.isFinite(value) ? [value] : []
+      })
+      Object.assign(aggregated, { [key]: median(values) })
+    }
+    return aggregated
+  })
+}
+
+function intervalLabel(interval: number): string {
+  return interval < 60_000 ? '20 s' : `${interval / 60_000} min`
+}
+
 const Chart = memo(function Chart({
   samples,
   config,
@@ -69,13 +115,15 @@ const Chart = memo(function Chart({
   samples: Telemetry[]
   config: (typeof configs)[number]
 }) {
+  const interval = useMemo(() => chartInterval(samples), [samples])
+  const points = useMemo(() => aggregateSamples(samples, interval), [samples, interval])
   const option = useMemo<EChartsOption>(() => {
-    const points = samples.slice(-600)
     const series: LineSeriesOption[] = config.series.map((s) => ({
       name: s.label,
       type: 'line',
-      showSymbol: true,
+      showSymbol: false,
       symbolSize: 4,
+      emphasis: { focus: 'series', scale: 1.3 },
       connectNulls: true,
       sampling: 'lttb',
       yAxisIndex: s.axis ?? 0,
@@ -109,7 +157,8 @@ const Chart = memo(function Chart({
         label: {
           description:
             config.title +
-            '. ' +
+            '. Resumen por intervalos de ' + intervalLabel(interval) +
+            ', con la mediana de las muestras recibidas. ' +
             points.length +
             ' muestras, ordenadas por hora de recepción. Las lecturas actuales están disponibles en las tarjetas de sensores.',
         },
@@ -118,6 +167,8 @@ const Chart = memo(function Chart({
       grid: { left: 9, right: 9, top: 28, bottom: 4, containLabel: true },
       tooltip: {
         trigger: 'axis',
+        triggerOn: 'mousemove|click|mousewheel',
+        axisPointer: { type: 'line', lineStyle: { color: '#00e5ff', width: 1 } },
         renderMode: 'richText',
         backgroundColor: '#0d1625',
         borderColor: '#235466',
@@ -156,16 +207,17 @@ const Chart = memo(function Chart({
         : axis(config.unit),
       series,
     }
-  }, [samples, config])
+  }, [points, config, interval])
   return (
     <section className="panel chart-panel">
       <SectionTitle>{config.title}</SectionTitle>
+      <p className="chart-hint">Mediana cada {intervalLabel(interval)} · Toca la gráfica para consultar el valor</p>
       {config.series.some(s => telemetryPoints(samples, s.key).length > 0) ? (
         <ReactEChartsCore
           echarts={echarts}
           option={option}
           opts={chartOptions}
-          style={{ height: 148, width: '100%' }}
+          style={{ height: 163, width: '100%' }}
           notMerge
           lazyUpdate
         />
