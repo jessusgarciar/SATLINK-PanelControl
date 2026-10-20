@@ -4,6 +4,7 @@ import { DemoMissionGateway } from '../infrastructure/demo/DemoMissionGateway.ts
 import { HttpMissionGateway } from '../infrastructure/http/HttpMissionGateway.ts'
 import Dashboard from '../presentation/pages/Dashboard.tsx'
 import '../presentation/styles/App.css'
+import '../presentation/styles/Mission.css'
 
 const mapSettings = {
   tileUrl: import.meta.env.VITE_TILE_URL ?? 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',

@@ -59,6 +59,8 @@ python -m app.bootstrap.cli serve
 
 La misión debe existir antes de recibir su telemetría. La altura de lanzamiento es persistente y se expresa en metros sobre el nivel del mar. No se toma el primer uplink como origen ni se reutilizan muestras de demostración para inicializarla.
 
+Repetir `init-mission` con la misma configuración es idempotente. Se permite cambiar únicamente `staleAfterSeconds` sin reemplazar la misión ni sus muestras; cambios de origen, identidad u otros parámetros siguen produciendo conflicto.
+
 El arranque mediante la CLI configura el bucle de eventos de Windows necesario para aiomqtt. Conserva este punto de entrada para ejecutar conjuntamente FastAPI y la recepción MQTT.
 
 ## Conectar el panel
@@ -88,7 +90,7 @@ El snapshot entrega ajustes, token CSRF del proceso y próximo instante permitid
 
 Selecciona `planned` con hora de lanzamiento explícita o `ascending` con GPS reciente. El [popup de planificación](../features/prediction-planning.md) permite un origen manual independiente con altitud MSL confirmada; los clientes existentes pueden omitirlo y usar el origen persistente. La selección no modifica la fase física de misión ni activa telecomandos. Las peticiones usan un límite total de 10 s, sin reintentos, y una separación persistente de 60 s también ante fallo. El resultado anterior se conserva. El recorrido y la comparación en SondeHub están en [Predicción Tawhiri](../features/prediction-tawhiri.md).
 
-Para habilitar ChirpStack, configura host, puerto y TLS conforme al broker, añade usuario/contraseña si los requiere y cambia `SATLINK_MQTT_ENABLED=true`. Registra la misión con el mismo `SATLINK_CHIRPSTACK_SOURCE`, Application ID y DevEUI de los uplinks. El consumidor se suscribe a `application/+/device/+/event/up` y la ingestión admite solo dispositivos asociados a una misión registrada; una conexión al broker sin misión asociada no basta para guardar muestras. No copies credenciales a `.env.local` del frontend.
+Para habilitar ChirpStack, configura host, puerto y TLS conforme al broker, añade usuario/contraseña si los requiere y cambia `SATLINK_MQTT_ENABLED=true`. Registra la misión con el mismo `SATLINK_CHIRPSTACK_SOURCE`, Application ID y DevEUI de los uplinks. Al arrancar, la CLI valida `backend/mission.local.json` y construye la suscripción exacta `application/{applicationId}/device/{deviceEui}/event/up`. El consumidor elimina la suscripción wildcard antigua si quedó persistida. La ingestión admite solo dispositivos asociados a una misión registrada; una conexión al broker sin misión asociada no basta para guardar muestras. No copies credenciales a `.env.local` del frontend.
 
 El panel distingue MQTT `disabled`, `connecting`, `connected`, `reconnecting` y `offline` de su propio WebSocket. `connected` representa el transporte MQTT, no una lectura reciente ni recepción RF comprobada. Ante reconexión se conservan las muestras persistidas y su antigüedad. Si no hay lecturas, revisa la configuración de la misión, el topic/sobre ChirpStack y el perfil de 19 bytes/fPort 10 antes de asumir un fallo del panel. Las reglas de rechazo y conservación del mensaje original están en el [protocolo PICARO](../protocols/picaro-full-v1.md).
 

@@ -6,6 +6,8 @@ import { ageLabel, clock, dateTime, duration, km, number } from '../format.ts'
 import type { MapSettings } from './MissionMap.tsx'
 import { Definition, Dialog, PhaseChip, RangeInput, SectionTitle } from './ui.tsx'
 import PlanningDialog from './PlanningDialog.tsx'
+import MissionIcon from './MissionIcon.tsx'
+import Carousel from './react-bits/Carousel.tsx'
 
 const MissionMap = lazy(() => import('./MissionMap.tsx'))
 function localDatetime(value: string): string {
@@ -138,7 +140,7 @@ export default function RecoveryView({
     <Dialog
       title="Recuperación · Rastreo y predicción"
       onClose={onClose}
-      className="recovery-dialog"
+      className="recovery-dialog mission-dialog"
     >
       <div className="recovery-shell">
         <div className="recovery-status">
@@ -148,8 +150,19 @@ export default function RecoveryView({
             {simulated ? (demo ? 'ESCENARIO SIMULADO' : 'TELEMETRÍA SIMULADA · TAWHIRI REAL') : 'ESTIMACIÓN · NO ES ATERRIZAJE CONFIRMADO'}
           </span>
         </div>
+        <section className="operation-hero" aria-label="Resumen de recuperación">
+          <p className="mission-eyebrow"><MissionIcon name="map" /> RASTREO Y RECUPERACIÓN</p>
+          <h3>El próximo punto de encuentro.</h3>
+          <p>Posición {simulated ? 'simulada' : 'recibida'} y aterrizaje estimado, siempre por separado.</p>
+          <dl className="operation-metrics">
+            <Definition label="Altitud GPS · s. n. m." tone="cyan">{km(latest?.altitudeGpsM)} km</Definition>
+            <Definition label="Distancia a la estimación">{number(dist)} km</Definition>
+            <Definition label="Llegada estimada" tone="amber">{prediction ? clock(prediction.landing.time) : '—'}</Definition>
+            <Definition label="Tiempo restante">{prediction ? duration((Date.parse(prediction.landing.time) - now) / 1000) : '—'}</Definition>
+          </dl>
+        </section>
         <div className="recovery-grid">
-          <section className="panel recovery-map-panel">
+          <section className="panel recovery-map-panel" id="recovery-map">
             <SectionTitle>Mapa de trayectoria y aterrizaje predicho</SectionTitle>
             <Suspense fallback={<div className="map-loading">Cargando cartografía…</div>}>
               <MissionMap snapshot={snapshot} settings={settings} overview />
@@ -197,7 +210,7 @@ export default function RecoveryView({
                 </Definition>
               </dl>
             </section>
-            <section className="panel predictor-panel">
+            <section className="panel predictor-panel" id="recovery-parameters">
               <SectionTitle>2 · Parámetros del predictor</SectionTitle>
               <form
                 onSubmit={(e) => {
@@ -265,7 +278,7 @@ export default function RecoveryView({
                 </p>
               )}
             </section>
-            <section className="panel prediction-panel">
+            <section className="panel prediction-panel" id="recovery-result">
               <div className="section-heading">
                 <SectionTitle amber>Predicción de aterrizaje</SectionTitle>
                 {prediction && (
@@ -293,7 +306,10 @@ export default function RecoveryView({
                       {clock(prediction.release.time)}
                     </Definition>
                     <Definition label="Dist. desde posición">{number(dist)} km</Definition>
-                    <Definition label="Cálculo">{dateTime(prediction.generatedAt)}</Definition>
+                  </dl>
+                  <Carousel className="orbitium-carousel recovery-detail-carousel" theme="light" baseWidth="100%" autoHeight peek={0} gap={16} radius={4} frame={false} effect="slide" indicator="counter" arrows autoplay={false} loop={false} items={[
+                    <article key="weather" className="mission-detail-card"><div className="mission-detail-heading"><MissionIcon name="charts" />01 / PROCEDENCIA</div><h3>Datos del cálculo</h3><dl className="detail-list">
+                     <Definition label="Cálculo">{dateTime(prediction.generatedAt)}</Definition>
                     <Definition label="Meteorología">
                       {prediction.weatherAt
                         ? dateTime(prediction.weatherAt)
@@ -301,15 +317,16 @@ export default function RecoveryView({
                           ? 'No aplica · simulación'
                           : 'No disponible'}
                     </Definition>
-                    {prediction.context && <>
+                    </dl></article>,
+                    ...(prediction.context ? [<article key="context" className="mission-detail-card"><div className="mission-detail-heading"><MissionIcon name="settings" />02 / CONTEXTO</div><h3>Referencias utilizadas</h3><dl className="detail-list">
                       <Definition label="Contexto utilizado">{prediction.context.mode === 'planned' ? 'Planificación' : 'Ascenso · supuesto del operador'}</Definition>
                       <Definition label="Origen del cálculo">{number(prediction.context.origin.latitude, 6)}°, {number(prediction.context.origin.longitude, 6)}°</Definition>
                       <Definition label="Altitud inicial · s. n. m.">{number(prediction.context.origin.altitudeM, 1)} m</Definition>
                       <Definition label="Inicio del cálculo · UTC">{prediction.context.originAt}</Definition>
                       <Definition label="Liberación · s. n. m.">{number((prediction.parameters.launch?.altitudeM ?? mission.launch.altitudeM) + prediction.parameters.targetRelativeAltitudeM, 1)} m</Definition>
                       <Definition label="Paquete utilizado">{prediction.context.inputSource === 'simulated' ? 'Entrada de demostración' : prediction.context.telemetryId ?? 'No aplica · planificación'}</Definition>
-                    </>}
-                  </dl>
+                    </dl></article>] : []),
+                  ]} />
                   <button
                     className="button subtle full-width"
                     onClick={async () => {

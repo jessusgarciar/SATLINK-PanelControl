@@ -21,7 +21,7 @@ Abre la dirección que indique Vite, normalmente `http://localhost:5174`. El mod
 3. Pulsa **PING**, **STATUS?**, **TELEM?** o la baliza. La bitácora distingue pendiente, enviado, recibido y ejecutado, con evidencias simuladas.
 4. **RELEASE** abre una confirmación. Escribe `LIBERAR` para simular descenso y un evento de liberación independiente del estado del comando.
 5. **Pausar señal** detiene las muestras. Tras 15 segundos, el panel marca datos antiguos y deshabilita comandos. **Reanudar señal** recupera la actualización.
-6. Cambia a **ESTACIÓN REAL** para usar el backend configurado. Si está desconectado aparece un error explícito. Nunca se sustituye automáticamente por una simulación.
+6. Abre **Menú** en la cabecera y cambia a **ESTACIÓN REAL** para usar el backend configurado. Allí aparecen fuente, fase y reloj antes de los accesos a las secciones. Si está desconectado aparece un error explícito. Nunca se sustituye automáticamente por una simulación.
 
 Recarga la página o cambia de fuente para comenzar un escenario nuevo. La demo no persiste ni transmite órdenes físicas.
 
@@ -38,7 +38,6 @@ SATLINK_BACKEND_ORIGIN=http://127.0.0.1:8001
 
 Reinicia Vite después de cambiar variables. El proxy `/api` admite HTTP y WebSocket. `VITE_*` es configuración pública del navegador, nunca un lugar para credenciales. `SATLINK_BACKEND_ORIGIN` solo configura el proxy de desarrollo.
 
-El backend implementa snapshot, stream e historial paginado del [contrato documentado](../docs/protocols/frontend-api-v1.md). En esta etapa local no necesita login, entrega permisos de escritura en `false` y `csrfToken=null`. Comandos y predicción permanecen pendientes. El panel funciona en lectura; la altura relativa se calcula en backend. El perfil de 19 bytes no transmite humedad y todavía no calcula velocidad vertical ni altitud barométrica: se muestran como desconocidas. Los objetivos configurables tienen un máximo de 15 000 m relativos; las mediciones que lo superen permanecen visibles.
 
 Separa el estado MQTT del backend de la conexión WebSocket del navegador, incorpora datos de dispositivo/radio y permite consultar ventanas de 15 minutos, 1 hora, 6 horas, 24 horas o todo el historial. Las gráficas y trayectoria pueden reducir puntos; el CSV contiene todas las filas del intervalo. La reproducción histórica a 1×/5×/10× conserva fechas originales y deshabilita escrituras; no mezcla el stream en vivo con el historial. La bitácora técnica conserva hasta 100 entradas de la sesión y es distinta de la bitácora de comandos. Consulta [Dashboard y conexión ChirpStack](../docs/features/dashboard-chirpstack.md).
 
@@ -50,10 +49,13 @@ El proveedor de mapa puede cambiarse con `VITE_TILE_URL` y su atribución obliga
 npm test
 npm run lint
 npm run build
+npm run test:ui
 npm run preview
 ```
 
 Las pruebas utilizan el runner nativo de Node y no necesitan un servidor. El build ejecuta TypeScript estricto y genera `dist/`. `preview` sirve esa compilación para revisión local; no inicia FastAPI. En producción sirve `dist/` y `/api` bajo el mismo origen HTTPS con soporte para WebSocket en el proxy.
+
+`test:ui` inicia un Vite aislado en `127.0.0.1:5189`, usa Edge headless en Windows y guarda evidencia en `../.local/ui-evidence/`. Requiere Edge instalado o un Chromium compatible indicado por `PLAYWRIGHT_CHANNEL`. Bloquea backend y proveedores externos; no ejecuta telecomandos ni valida integración física.
 
 Mapa, gráficas y recuperación se cargan bajo demanda. Vite informa que el módulo de ECharts supera 500 kB minificados; la advertencia no se ha ocultado. No impide compilar. Su descarga comprimida ronda 185 kB y se realiza al mostrar gráficas.
 

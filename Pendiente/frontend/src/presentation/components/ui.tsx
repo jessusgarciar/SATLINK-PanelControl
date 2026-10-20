@@ -2,6 +2,7 @@ import { Component, useEffect, useRef } from 'react'
 import type { CSSProperties, ErrorInfo, ReactNode } from 'react'
 import type { FlightPhase } from '../../domain/mission.ts'
 import { phaseLabels } from '../format.ts'
+import type { MetricTone } from '../metricTones.ts'
 
 export function SectionTitle({
   children,
@@ -32,7 +33,7 @@ export function DataCard({
   value: string
   unit?: string
   detail?: string
-  tone?: 'neutral' | 'cyan' | 'green' | 'amber' | 'red'
+  tone?: MetricTone
   stale?: boolean
 }) {
   return (
@@ -93,6 +94,7 @@ export function Dialog({
       aria-label={title}
       onCancel={(e) => {
         e.preventDefault()
+        e.stopPropagation()
         onClose()
       }}
     >
@@ -135,6 +137,7 @@ export function RangeInput({
       </span>
       <input
         type="range"
+        aria-label={label}
         min={min}
         max={max}
         step={step}

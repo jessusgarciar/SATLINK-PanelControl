@@ -1,22 +1,26 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import type { MissionController } from '../../application/MissionController.ts'
 import { dataAgeSeconds, latestSample } from '../../domain/mission.ts'
+import { latestReadings } from '../readings.ts'
+import { batteryTone, rssiTone, temperatureTone } from '../metricTones.ts'
 import type { MapSettings } from '../components/MissionMap.tsx'
 import { ageLabel, clock, duration, km, number, phaseLabels } from '../format.ts'
 import { useMission, useNow } from '../hooks/useMission.ts'
 import { useArchive } from '../hooks/useArchive.ts'
 import type { TimeRange, WindowKey } from '../../domain/history.ts'
-import satlinkLogo from '../../../../logo.png'
 import ArchiveToolbar from '../components/ArchiveToolbar.tsx'
 import CommandPanel from '../components/CommandPanel.tsx'
-import { DataCard, Definition, PhaseChip, SectionTitle } from '../components/ui.tsx'
+import { DataCard, Definition, SectionTitle } from '../components/ui.tsx'
+import MissionHeader from '../components/MissionHeader.tsx'
+import MissionSummary from '../components/MissionSummary.tsx'
+import MissionDetails from '../components/MissionDetails.tsx'
+import MissionLog from '../components/MissionLog.tsx'
 
 const MissionMap = lazy(() => import('../components/MissionMap.tsx'))
 const TelemetryCharts = lazy(() => import('../components/TelemetryCharts.tsx'))
 const RecoveryView = lazy(() => import('../components/RecoveryView.tsx'))
 const HistoryView = lazy(() => import('../components/HistoryView.tsx'))
 const mqttLabels = { disabled: 'MQTT deshabilitado', connecting: 'Conectando MQTT', connected: 'MQTT suscrito', reconnecting: 'Reconectando MQTT', offline: 'MQTT sin conexión' }
-const flag = (value: boolean | null | undefined) => value == null ? 'Desconocido' : value ? 'Sí' : 'No'
 
 export interface DashboardProps {
   controller: MissionController
@@ -34,6 +38,11 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
   useEffect(() => { if (archive.error) controller.recordTechnical('Archivo: ' + archive.error) }, [controller, archive.error])
   const mission = snapshot?.mission
   const latest = latestSample(snapshot?.telemetry ?? [])
+  const { values: readings, observedAt } = useMemo(
+    () => latestReadings(snapshot?.telemetry ?? [], mission?.id ?? ''), [snapshot?.telemetry, mission?.id],
+  )
+  const readingStale = (key: keyof typeof observedAt) => !observedAt[key] ||
+    now - Date.parse(observedAt[key]) > (mission?.staleAfterSeconds ?? 15) * 1000
   const age = dataAgeSeconds(latest, now)
   const stale = age === null || age > (mission?.staleAfterSeconds ?? 15)
   const demo = controller.gateway.mode === 'demo'
@@ -41,47 +50,19 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
     ? ((mission.endedAt ? Date.parse(mission.endedAt) : now) - Date.parse(mission.startedAt)) / 1000
     : null
   const progress =
-    latest?.relativeAltitudeM != null && mission
+    readings?.relativeAltitudeM != null && mission
       ? Math.max(
           0,
-          Math.min(100, (latest.relativeAltitudeM / mission.targetRelativeAltitudeM) * 100),
+          Math.min(100, (readings.relativeAltitudeM / mission.targetRelativeAltitudeM) * 100),
         )
       : null
   const releaseEvent = snapshot?.events.find((event) => event.type === 'release')
   return (
-    <>
+    <div className="orbitium-app">
       <a className="skip-link" href="#mission-dashboard">
         Saltar al panel de telemetría
       </a>
-      <header className="site-header">
-        <div className="header-inner">
-          <div className="brand">
-            <div>
-              <h1>
-                <img className="brand-logo" src={satlinkLogo} alt="" />
-                <span>SATLINK</span><span className="brand-divider">/</span><span>system</span>
-              </h1>
-              <p>ESTACIÓN TERRENA · CONTROL DE MISIÓN</p>
-            </div>
-          </div>
-          <div className="header-actions">
-            <label className="source-picker">
-              <span className="sr-only">Fuente de datos</span>
-              <select
-                value={controller.gateway.mode}
-                onChange={(e) => onModeChange(e.target.value as 'demo' | 'live')}
-              >
-                <option value="demo">DEMOSTRACIÓN</option>
-                <option value="live">ESTACIÓN REAL</option>
-              </select>
-            </label>
-            {mission && <PhaseChip phase={mission.phase} />}
-            <span className="mission-clock">
-              T+ <strong>{duration(elapsed)}</strong>
-            </span>
-          </div>
-        </div>
-      </header>
+      <MissionHeader mission={mission} elapsed={elapsed} mode={controller.gateway.mode} onModeChange={onModeChange} />
       <main id="mission-dashboard" className="dashboard-shell">
         <div
           className={
@@ -152,6 +133,7 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
         )}
         {snapshot && mission && (
           <>
+            <MissionSummary mission={mission} readings={readings} progress={progress} stale={readingStale('relativeAltitudeM')} observedAt={observedAt.relativeAltitudeM} />
             <section className="metrics-primary" aria-label="Estado de la misión">
               <DataCard
                 label="Tiempo de vuelo"
@@ -168,61 +150,64 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
               <DataCard
                 label="Vel. ascenso/desc"
                 value={
-                  latest?.verticalSpeedMs != null
-                    ? (latest.verticalSpeedMs > 0 ? '+' : '') + number(latest.verticalSpeedMs)
+                  readings?.verticalSpeedMs != null
+                    ? (readings.verticalSpeedMs > 0 ? '+' : '') + number(readings.verticalSpeedMs)
                     : '—'
                 }
                 unit="m/s"
-                detail="Derivada · backend"
+                detail={readings?.verticalSpeedMs == null ? 'No disponible en la telemetría' : 'Reportada por el dispositivo'}
                 tone={mission.phase === 'descending' ? 'amber' : 'green'}
-                stale={stale}
+                stale={readingStale('verticalSpeedMs')}
               />
               <DataCard
                 label="RSSI LoRaWAN"
-                value={number(latest?.rssiDbm, 0)}
+                value={number(readings?.rssiDbm, 0)}
                 unit="dBm"
-                detail={'SNR ' + number(latest?.snrDb) + ' dB · ' + mission.region}
-                tone="green"
-                stale={stale}
+                detail={'SNR ' + number(readings?.snrDb) + ' dB · ' + mission.region}
+                tone={rssiTone(readings?.rssiDbm)}
+                stale={readingStale('rssiDbm')}
               />
             </section>
-            <section className="metrics-secondary" aria-label="Lecturas de sensores">
+            <section id="mission-sensors" tabIndex={-1} className="metrics-secondary" aria-label="Lecturas de sensores">
               <DataCard
                 label="Altitud GPS"
-                value={km(latest?.altitudeGpsM)}
+                value={km(readings?.altitudeGpsM)}
                 unit="km"
-                detail={'s. n. m. · Baro ' + km(latest?.altitudeBarometricM, 2) + ' km'}
+                detail={'s. n. m. · Baro ' + km(readings?.altitudeBarometricM, 2) + ' km'}
                 tone="cyan"
-                stale={stale}
+                stale={readingStale('altitudeGpsM')}
               />
               <DataCard
                 label="Temp. interna"
-                value={number(latest?.temperatureC)}
+                value={number(readings?.temperatureC)}
                 unit="°C"
                 detail="Sensor de la cápsula"
-                stale={stale}
+                tone={temperatureTone(readings?.temperatureC)}
+                stale={readingStale('temperatureC')}
               />
               <DataCard
                 label="Humedad rel."
-                value={number(latest?.humidityPct)}
+                value={number(readings?.humidityPct)}
                 unit="%"
                 detail="Humedad relativa"
-                stale={stale}
+                tone="blue"
+                stale={readingStale('humidityPct')}
               />
               <DataCard
                 label="Presión atm."
-                value={number(latest?.pressureHpa)}
+                value={number(readings?.pressureHpa)}
                 unit="hPa"
                 detail="Presión ambiente"
-                stale={stale}
+                tone="cyan"
+                stale={readingStale('pressureHpa')}
               />
               <DataCard
                 label="Voltaje batería"
-                value={number(latest?.batteryV, 3)}
+                value={number(readings?.batteryV, 3)}
                 unit="V"
                 detail="Medición de alimentación"
-                tone={latest?.batteryV != null && latest.batteryV < 3.4 ? 'amber' : 'green'}
-                stale={stale}
+                tone={batteryTone(readings?.batteryV)}
+                stale={readingStale('batteryV')}
               />
               <DataCard
                 label="Último dato"
@@ -235,25 +220,9 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
                 stale={stale}
               />
             </section>
-            <section className="panel device-panel" aria-label="Dispositivo y enlace">
-              <SectionTitle>GNSS · Alimentación · Radio {demo ? 'SIMULADOS' : ''}</SectionTitle>
-              <dl className="device-grid">
-                <Definition label="GPS activo">{flag(latest?.device?.gpsActive)}</Definition>
-                <Definition label="Fix GPS">{flag(latest?.device?.gpsFix)}</Definition>
-                <Definition label="Satélites">{number(latest?.device?.satellites, 0)}</Definition>
-                <Definition label="Batería reportada">{number(latest?.device?.batteryPct, 0)} %</Definition>
-                <Definition label="Cargando">{flag(latest?.device?.charging)}</Definition>
-                <Definition label="Alimentación USB">{flag(latest?.device?.usbPowered)}</Definition>
-                <Definition label="Gateway">{latest?.radio?.gatewayId ?? '—'}</Definition>
-                <Definition label="Frecuencia">{latest?.radio?.frequencyHz == null ? '—' : number(latest.radio.frequencyHz / 1e6, 3) + ' MHz'}</Definition>
-                <Definition label="Data Rate">{latest?.radio?.dataRate == null ? '—' : 'DR' + latest.radio.dataRate}</Definition>
-                <Definition label="Puerto">{number(latest?.radio?.fPort, 0)}</Definition>
-              </dl>
-            </section>
-            <ArchiveToolbar gateway={controller.gateway} selected={windowKey} setSelected={(key) => { setWindowKey(key); controller.recordTechnical('Ventana: ' + key) }} range={archive.data} total={archive.data?.total ?? null} seriesCount={archive.data?.series.length ?? 0} trackCount={archive.data?.track.length ?? 0} loading={archive.loading} error={archive.error} onActivity={controller.recordTechnical} openHistory={() => { if (archive.data) { controller.recordTechnical('Reproducción histórica: intervalo fijado · ' + archive.data.to); setReplayRange({ from: archive.data.from, to: archive.data.to }) } }} />
             <div className="telemetry-layout">
               <div className="position-column">
-                <section className="panel map-panel">
+                <section id="mission-map" tabIndex={-1} className="panel map-panel">
                   <div className="section-heading">
                     <SectionTitle>Trayectoria GPS · Intervalo</SectionTitle>
                     <button className="button amber small" onClick={() => setRecoveryOpen(true)}>
@@ -264,48 +233,20 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
                     <MissionMap snapshot={{ ...snapshot, telemetry: archive.data?.track ?? [] }} settings={mapSettings} />
                   </Suspense>
                   <dl className="coordinates-grid">
-                    <Definition label="Lat">{number(latest?.latitude, 5)}°</Definition>
-                    <Definition label="Lon">{number(latest?.longitude, 5)}°</Definition>
+                    <Definition label="Lat">{number(readings?.latitude, 5)}°</Definition>
+                    <Definition label="Lon">{number(readings?.longitude, 5)}°</Definition>
                     <Definition label="Alt GPS · s. n. m.">
-                      {km(latest?.altitudeGpsM)} km
+                      {km(readings?.altitudeGpsM)} km
                     </Definition>
                     <Definition label="Fase">{phaseLabels[mission.phase]}</Definition>
                   </dl>
                 </section>
-                <section className="panel altitude-panel">
-                  <SectionTitle>Altitud relativa / Objetivo</SectionTitle>
-                  <div className="altitude-body">
-                    <div
-                      className="altitude-track"
-                      role="progressbar"
-                      aria-label="Progreso hacia altitud objetivo"
-                      aria-valuenow={progress ?? undefined}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-valuetext={progress === null ? 'No disponible' : number(progress) + '%'}
-                    >
-                      <div style={{ height: (progress ?? 0) + '%' }} />
-                    </div>
-                    <dl className="altitude-details">
-                      <Definition label="Altura sobre lanzamiento" tone="cyan">
-                        {km(latest?.relativeAltitudeM)} km
-                      </Definition>
-                      <Definition label="Progreso">{number(progress)}%</Definition>
-                      <Definition label="Objetivo relativo">
-                        {km(mission.targetRelativeAltitudeM)} km
-                      </Definition>
-                    </dl>
-                    <span className="altitude-reference">
-                      GPS
-                      <br />+{km(mission.targetRelativeAltitudeM, 0)} km
-                    </span>
-                  </div>
-                </section>
               </div>
               <Suspense fallback={<div className="panel chart-empty">Cargando gráficas…</div>}>
-                <TelemetryCharts samples={archive.data?.series ?? []} />
+                <TelemetryCharts samples={archive.data?.series ?? []} sectionId="mission-charts" />
               </Suspense>
             </div>
+            <MissionDetails mission={mission} readings={readings} demo={demo} />
             {releaseEvent && (
               <div className="release-event" role="status">
                 <strong>EVENTO DE LIBERACIÓN</strong>
@@ -315,31 +256,8 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
               </div>
             )}
             <CommandPanel state={state} controller={controller} now={now} />
-            <section className="panel technical-panel" aria-label="Bitácora técnica de sesión">
-              <SectionTitle>Bitácora técnica · Sesión</SectionTitle>
-              <p className="archive-caption">Conexiones y errores del panel. Separada de los eventos físicos de misión.</p>
-              <ol className="technical-log">{state.technicalLog.length ? state.technicalLog.map((entry) => <li key={entry.id}><time dateTime={entry.at}>{clock(entry.at)}</time> {entry.message}</li>) : <li>Sin cambios de conexión registrados.</li>}</ol>
-            </section>
-            <section className="panel mission-config" aria-label="Configuración de misión">
-              <dl>
-                <Definition label="Altitud objetivo">
-                  +{km(mission.targetRelativeAltitudeM, 0)} km relativos
-                </Definition>
-                <Definition label="Zona lanzamiento">{mission.launchLabel}</Definition>
-                <Definition label="Tasa ascenso nom.">
-                  {number(mission.nominalAscentMs, 0)} m/s
-                </Definition>
-                <Definition label="ETA objetivo · nominal">
-                  ~{Math.round(mission.targetRelativeAltitudeM / mission.nominalAscentMs / 60)} min
-                </Definition>
-                <Definition label="Watchdog">{mission.watchdogSeconds / 60} min</Definition>
-                <Definition label="Descenso nominal">
-                  {number(mission.nominalDescentMs)} m/s
-                </Definition>
-                <Definition label="Disparador primario">GPS · firmware</Definition>
-                <Definition label="Disparador respaldo">Timer · firmware</Definition>
-              </dl>
-            </section>
+            <MissionLog entries={state.technicalLog} />
+            <ArchiveToolbar gateway={controller.gateway} selected={windowKey} setSelected={(key) => { setWindowKey(key); controller.recordTechnical('Ventana: ' + key) }} range={archive.data} total={archive.data?.total ?? null} seriesCount={archive.data?.series.length ?? 0} trackCount={archive.data?.track.length ?? 0} loading={archive.loading} error={archive.error} onActivity={controller.recordTechnical} openHistory={() => { if (archive.data) { controller.recordTechnical('Reproducción histórica: intervalo fijado · ' + archive.data.to); setReplayRange({ from: archive.data.from, to: archive.data.to }) } }} />
             <footer className="site-footer">
               <span>SATLINK · system · MISSION DASHBOARD</span>
               <span>
@@ -367,6 +285,6 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
           </>
         )}
       </main>
-    </>
+    </div>
   )
 }

@@ -131,7 +131,7 @@ try {
     } else {
         Wait-TaskUrl "http://127.0.0.1:$taskBackendPort/api/v1/demo/predictions" $taskBackend
     }
-    $taskFrontend = Start-Process -FilePath $taskNode -ArgumentList 'node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', ([string]$taskFrontendPort), '--strictPort' -WorkingDirectory "$taskRoot/frontend" -WindowStyle Hidden -PassThru -RedirectStandardOutput "$taskLogs/frontend.log" -RedirectStandardError "$taskLogs/frontend-error.log"
+    $taskFrontend = Start-Process -FilePath $taskNode -ArgumentList 'node_modules/vite/bin/vite.js', '--host', '0.0.0.0', '--port', ([string]$taskFrontendPort), '--strictPort' -WorkingDirectory "$taskRoot/frontend" -WindowStyle Hidden -PassThru -RedirectStandardOutput "$taskLogs/frontend.log" -RedirectStandardError "$taskLogs/frontend-error.log"
     $taskProcesses += $taskFrontend
     Add-TaskLog "$taskLogs/frontend.log" 'FRONTEND' Green
     Add-TaskLog "$taskLogs/frontend-error.log" 'FRONTEND · STDERR' Yellow

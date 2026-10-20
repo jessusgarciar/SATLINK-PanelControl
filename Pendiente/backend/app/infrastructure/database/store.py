@@ -98,8 +98,19 @@ class PostgresStore:
                     dev_eui=config["deviceEui"], configuration=config, snapshot=snapshot,
                 ).on_conflict_do_nothing(index_elements=["id"]))
                 row = await session.get(MissionRow, config["id"])
-                if row is None or row.configuration != config:
+                if row is None:
                     raise ConfigurationConflict("La misión existe con otra configuración; no se modificó su origen")
+                if row.configuration != config:
+                    previous = dict(row.configuration)
+                    requested = dict(config)
+                    previous_staleness = previous.pop("staleAfterSeconds", None)
+                    requested_staleness = requested.pop("staleAfterSeconds", None)
+                    if previous != requested or previous_staleness == requested_staleness:
+                        raise ConfigurationConflict(
+                            "La misión existe con otra configuración; no se modificó su origen")
+                    row.configuration = config
+                    row.snapshot = {**row.snapshot, "staleAfterSeconds": requested_staleness,
+                                    "updatedAt": datetime.now(timezone.utc).isoformat()}
                 return row.snapshot
         except IntegrityError as exc:
             raise ConfigurationConflict("El dispositivo ya está asociado a otra misión") from exc

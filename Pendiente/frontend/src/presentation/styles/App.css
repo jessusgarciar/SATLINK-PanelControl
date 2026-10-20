@@ -230,6 +230,8 @@
 .tone-cyan {
   color: var(--cyan);
 }
+.tone-blue { color: #0284c7; }
+.chart-hint { margin: -4px 4px 4px; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .tone-green {
   color: var(--green);
 }

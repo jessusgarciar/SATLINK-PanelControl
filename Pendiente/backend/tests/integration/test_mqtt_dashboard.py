@@ -21,7 +21,7 @@ async def test_mqtt_uplink_reaches_committed_database_websocket_and_full_http_ex
     topic, payload = make_uplink(dr=3, txInfo={"frequency": 902300000},
                                 note='Entrada SINTÉTICA, "áéíóú"')
     raw_event = json.loads(payload)
-    attempts, subscriptions, published = [], [], []
+    attempts, subscriptions, removals, published = [], [], [], []
 
     class FakeClient:
         def __init__(self, **kwargs):
@@ -32,6 +32,9 @@ async def test_mqtt_uplink_reaches_committed_database_websocket_and_full_http_ex
 
         async def __aexit__(self, *args):
             pass
+
+        async def unsubscribe(self, subscribed_topic):
+            removals.append(subscribed_topic)
 
         async def subscribe(self, subscribed_topic, qos):
             subscriptions.append((subscribed_topic, qos))
@@ -71,7 +74,7 @@ async def test_mqtt_uplink_reaches_committed_database_websocket_and_full_http_ex
         async def consume_fixture():
             try:
                 await consumer.consume("synthetic-broker", 1883, None, None, False,
-                    "synthetic-client", app.state.ingestor.execute, app.state.ingestion.update)
+                    "synthetic-client", topic, app.state.ingestor.execute, app.state.ingestion.update)
             except asyncio.CancelledError:
                 return "cancelled"
             pytest.fail("El consumidor debe propagar cancelación al terminar el flujo sintético")
@@ -112,6 +115,7 @@ async def test_mqtt_uplink_reaches_committed_database_websocket_and_full_http_ex
 
     await asyncio.to_thread(run_client)
     assert len(attempts) == 1
-    assert subscriptions == [("application/+/device/+/event/up", 1)]
+    assert subscriptions == [(topic, 1)]
+    assert removals == [consumer.LEGACY_UPLINK_TOPIC]
     assert attempts[0]["hostname"] == "synthetic-broker"
     assert attempts[0]["clean_session"] is False

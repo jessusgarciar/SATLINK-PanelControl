@@ -6,6 +6,8 @@ import { GridComponent, TooltipComponent, LegendComponent, AriaComponent } from 
 import { CanvasRenderer } from 'echarts/renderers'
 import type { EChartsOption, LineSeriesOption } from 'echarts'
 import type { Telemetry } from '../../domain/mission.ts'
+import { telemetryPoints } from '../readings.ts'
+import { aggregateSamples, chartInterval } from '../chartReadings.ts'
 import { SectionTitle } from './ui.tsx'
 
 echarts.use([
@@ -61,6 +63,12 @@ const configs: { title: string; unit: string; series: SeriesConfig[]; secondUnit
     series: [{ key: 'batteryV', label: 'Batería', color: colors.green, area: true }],
   },
 ]
+const chartMetricKeys = [...new Set(configs.flatMap((config) => config.series.map((series) => series.key)))]
+
+function intervalLabel(interval: number): string {
+  return interval < 60_000 ? '20 s' : `${interval / 60_000} min`
+}
+
 const Chart = memo(function Chart({
   samples,
   config,
@@ -68,13 +76,16 @@ const Chart = memo(function Chart({
   samples: Telemetry[]
   config: (typeof configs)[number]
 }) {
+  const interval = useMemo(() => chartInterval(samples), [samples])
+  const points = useMemo(() => aggregateSamples(samples, interval, chartMetricKeys), [samples, interval])
   const option = useMemo<EChartsOption>(() => {
-    const points = samples.slice(-600)
     const series: LineSeriesOption[] = config.series.map((s) => ({
       name: s.label,
       type: 'line',
       showSymbol: false,
-      connectNulls: false,
+      symbolSize: 4,
+      emphasis: { focus: 'series', scale: 1.3 },
+      connectNulls: true,
       sampling: 'lttb',
       yAxisIndex: s.axis ?? 0,
       lineStyle: { width: 1.6, color: s.color },
@@ -87,10 +98,7 @@ const Chart = memo(function Chart({
             ]),
           }
         : undefined,
-      data: points.map((t) => [
-        Date.parse(t.receivedAt),
-        typeof t[s.key] === 'number' ? Number(t[s.key]) * (s.scale ?? 1) : null,
-      ]),
+      data: telemetryPoints(points, s.key, s.scale),
     }))
     const axis = (unit: string) => ({
       type: 'value' as const,
@@ -110,7 +118,8 @@ const Chart = memo(function Chart({
         label: {
           description:
             config.title +
-            '. ' +
+            '. Resumen por intervalos de ' + intervalLabel(interval) +
+            ', con la mediana de las muestras recibidas. ' +
             points.length +
             ' muestras, ordenadas por hora de recepción. Las lecturas actuales están disponibles en las tarjetas de sensores.',
         },
@@ -119,6 +128,8 @@ const Chart = memo(function Chart({
       grid: { left: 9, right: 9, top: 28, bottom: 4, containLabel: true },
       tooltip: {
         trigger: 'axis',
+        triggerOn: 'mousemove|click|mousewheel',
+        axisPointer: { type: 'line', lineStyle: { color: '#2563eb', width: 1 } },
         renderMode: 'richText',
         backgroundColor: '#ffffff',
         borderColor: '#dbe3ee',
@@ -157,16 +168,17 @@ const Chart = memo(function Chart({
         : axis(config.unit),
       series,
     }
-  }, [samples, config])
+  }, [points, config, interval])
   return (
     <section className="panel chart-panel">
       <SectionTitle>{config.title}</SectionTitle>
-      {samples.length ? (
+      <p className="chart-hint">Mediana cada {intervalLabel(interval)} · Toca la gráfica para consultar el valor</p>
+      {config.series.some(s => telemetryPoints(samples, s.key).length > 0) ? (
         <ReactEChartsCore
           echarts={echarts}
           option={option}
           opts={chartOptions}
-          style={{ height: 148, width: '100%' }}
+          style={{ height: 163, width: '100%' }}
           notMerge
           lazyUpdate
         />
@@ -176,9 +188,9 @@ const Chart = memo(function Chart({
     </section>
   )
 })
-export default function TelemetryCharts({ samples }: { samples: Telemetry[] }) {
+export default function TelemetryCharts({ samples, sectionId }: { samples: Telemetry[]; sectionId?: string }) {
   return (
-    <div className="charts-grid">
+    <div id={sectionId} tabIndex={sectionId ? -1 : undefined} className="charts-grid">
       {configs.map((config) => (
         <Chart key={config.title} samples={samples} config={config} />
       ))}

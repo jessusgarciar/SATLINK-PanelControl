@@ -92,6 +92,20 @@ async def test_mission_initialization_is_idempotent_and_origin_immutable(store, 
         await store.initialize_mission({**mission_config, "id": "other-flight"})
 
 
+async def test_staleness_can_change_without_replacing_identity_origin_or_telemetry(store, mission_config, make_uplink):
+    sample = await ingestion(store).execute(*make_uplink())
+    updated = await store.initialize_mission({**mission_config, "staleAfterSeconds": 300})
+    assert updated["staleAfterSeconds"] == 300
+    assert updated["launch"] == mission_config["launch"]
+    assert updated["deviceEui"] == mission_config["deviceEui"]
+    assert (await store.dashboard(mission_config["id"]))["telemetry"] == [sample]
+    assert await store.initialize_mission({**mission_config, "staleAfterSeconds": 300}) == updated
+    with pytest.raises(ConfigurationConflict):
+        await store.initialize_mission({**mission_config, "staleAfterSeconds": 400,
+                                       "applicationId": "different-app"})
+    assert (await store.dashboard(mission_config["id"]))["mission"]["staleAfterSeconds"] == 300
+
+
 async def test_history_over_1200_order_filters_scope_and_pagination(store, mission_config, make_uplink):
     base = await ingestion(store).execute(*make_uplink())
     now = datetime(2026, 10, 2, 12, tzinfo=timezone.utc)

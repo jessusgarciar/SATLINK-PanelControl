@@ -75,7 +75,7 @@ Los valores de `device` y `radio` también admiten `null`. `batteryPct` expone e
 
 El objetivo configurable máximo es 15 000 m relativos. Las mediciones que excedan esa altura no se recortan. El GPS admite altitudes negativas hasta −500 m; la altura relativa puede ser negativa respecto al origen persistente. No se infieren fase, liberación o aterrizaje de estas muestras: la fase inicial es `unknown`.
 
-El cliente almacena hasta 1200 muestras y dibuja hasta 600 por gráfica. Ordena por `receivedAt`, deduplica por ID y no desplaza la lectura actual cuando llega un paquete anterior. La deduplicación persistente por dispositivo/sesión/evento y el archivo histórico completo son responsabilidad del backend.
+El cliente almacena hasta 1200 muestras; el endpoint de ventana devuelve hasta 600 para las gráficas. La presentación resume los valores disponibles por mediana en intervalos identificados y conserva la última lectura válida por sensor con su fecha, sin modificar las muestras del contrato. Ordena por `receivedAt`, deduplica por ID y no desplaza la lectura actual cuando llega un paquete anterior. La deduplicación persistente por dispositivo/sesión/evento y el archivo histórico completo son responsabilidad del backend.
 
 ## WebSocket
 
