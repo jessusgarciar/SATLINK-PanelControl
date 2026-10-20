@@ -12,6 +12,7 @@ import {
 import type { LatLngTuple } from 'leaflet'
 import type { DashboardSnapshot, Telemetry } from '../../domain/mission.ts'
 import { clock, number } from '../format.ts'
+import SquishSwitch from './react-bits/SquishSwitch.tsx'
 
 export interface MapSettings {
   tileUrl: string
@@ -91,18 +92,17 @@ export default function MissionMap({
         >
           ◎ {following ? 'Siguiendo' : 'Seguir cápsula'}
         </button>
-        <label className="map-control">
-          <input
-            type="checkbox"
+        <SquishSwitch
+            className="mission-map-switch"
+            label="Mapa base"
             checked={tiles}
-            onChange={(e) => {
-              setTiles(e.target.checked)
+            onChange={(checked) => {
+              setTiles(checked)
               setTileError(false)
             }}
             disabled={!settings.tileUrl}
+            width={48} height={28} radius={14} stretch={16} hoverScale={1} trackColor="#203044" trackOnColor="#00c7df" thumbOnColor="#04121d" thumbColor="#a7b9ce"
           />
-          Mapa base
-        </label>
       </div>
       <MapContainer
         className="leaflet-host"

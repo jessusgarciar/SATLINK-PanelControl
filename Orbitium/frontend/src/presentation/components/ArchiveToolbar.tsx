@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { MissionGateway } from '../../application/ports.ts'
 import { WINDOW_OPTIONS } from '../../domain/history.ts'
 import type { TimeRange, WindowKey } from '../../domain/history.ts'
+import GlideSelect from './react-bits/GlideSelect.tsx'
 
 export default function ArchiveToolbar({ gateway, selected, setSelected, range, total, seriesCount, trackCount, loading, error, openHistory, onActivity }: {
   gateway: MissionGateway; selected: WindowKey; setSelected: (key: WindowKey) => void; range: TimeRange | null; total: number | null; seriesCount: number; trackCount: number; loading: boolean; error: string | null; openHistory: () => void; onActivity: (message: string) => void
@@ -28,9 +29,9 @@ export default function ArchiveToolbar({ gateway, selected, setSelected, range, 
     } catch (error) { if (!request.signal.aborted) { const message = error instanceof Error ? error.message : 'Falló la exportación.'; setExportError(message); onActivity('CSV: ' + message) } }
     finally { if (abort.current === request) setExporting(false) }
   }
-  return <section className="panel archive-controls" aria-label="Archivo de telemetría">
+  return <section id="mission-archive" tabIndex={-1} className="panel archive-controls" aria-label="Archivo de telemetría">
     <div className="archive-toolbar">
-      <label>Ventana <select value={selected} onChange={(e) => { setExportError(null); setSelected(e.target.value as WindowKey) }}>{WINDOW_OPTIONS.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}</select></label>
+      <div className="mission-window-filter"><span>Ventana</span><GlideSelect className="orbitium-glide" ariaLabel="Ventana del archivo" value={selected} onChange={value => { setExportError(null); setSelected(value as WindowKey) }} options={WINDOW_OPTIONS.map(option => ({ value: option.key, label: option.label }))} size="lg" radius={8} accentColor="#00e5ff" surfaceColor="#0d1625" highlightColor="#173049" textColor="#e2e8f0" popDuration={150} glideDuration={180} /></div>
       <span role="status">{loading ? 'Actualizando archivo…' : total === null ? 'Archivo no disponible' : total + ' registros'}</span>
       <button className="button subtle" disabled={!range || exporting || loading} onClick={() => void exportCsv()}>{exporting ? 'Exportando…' : '↓ CSV completo'}</button>
       {exporting && <button className="text-button" onClick={() => { abort.current?.abort(); setExporting(false) }}>Cancelar descarga</button>}

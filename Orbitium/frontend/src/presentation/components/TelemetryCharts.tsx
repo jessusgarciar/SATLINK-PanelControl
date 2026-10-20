@@ -227,9 +227,9 @@ const Chart = memo(function Chart({
     </section>
   )
 })
-export default function TelemetryCharts({ samples }: { samples: Telemetry[] }) {
+export default function TelemetryCharts({ samples, sectionId }: { samples: Telemetry[]; sectionId?: string }) {
   return (
-    <div className="charts-grid">
+    <div id={sectionId} tabIndex={sectionId ? -1 : undefined} className="charts-grid">
       {configs.map((config) => (
         <Chart key={config.title} samples={samples} config={config} />
       ))}

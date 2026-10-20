@@ -1,6 +1,6 @@
 # Frontend del panel SATLINK
 
-Implementación sobre el commit base `1bff7bc58cd196c161195fcdb8224e63af2809be`. Se conserva el stack fijado en `frontend/package.json`: React 19.3, TypeScript 6, Vite 8, React Leaflet 5 / Leaflet 1.9, ECharts 6 y echarts-for-react. No se añadió Tailwind, cliente HTTP, gestor de estado, router ni dependencia de producción.
+Implementación sobre el commit base `1bff7bc58cd196c161195fcdb8224e63af2809be`. Se conserva el stack fijado en `frontend/package.json`: React 19.3, TypeScript 6, Vite 8, React Leaflet 5 / Leaflet 1.9, ECharts 6 y echarts-for-react. El rediseño móvil añade Motion 12.43 y Hugeicons para componentes React Bits, con Playwright como herramienta de desarrollo. No incorpora Tailwind, cliente HTTP, gestor de estado ni router.
 
 ## Responsabilidades
 
@@ -28,7 +28,9 @@ Referencias del archivo `vHGubRMQ7LDtfg2egfMrkw`:
 
 Se preservan paleta de fondo `#060A12`, superficies `#0D1625`, cabecera `#04080F`, cian `#00E5FF`, verde `#4ADE80`, ámbar `#FBBF24`, rojo `#F87171`, bordes de 1 px, radio de 4 px, separación de 12 px y JetBrains Mono. La tipografía se sirve localmente con licencia OFL incluida. Se eleva el contraste de textos secundarios para que sean legibles en operación.
 
-El archivo contiene diseños móviles, no una pantalla de escritorio separada. La versión ancha reorganiza las mismas secciones con CSS Grid: cuatro indicadores de misión, seis sensores, mapa/altitud a la izquierda y gráficas a la derecha. En 393 px se conserva el orden del diseño y las tarjetas pasan a dos columnas. La recuperación pasa a pantalla completa con desplazamiento vertical, sin recortar contenidos.
+El rediseño móvil de Orbitium reemplaza el experimento de SpotlightCard/GlassSurface por Gooey Nav Calm, Card Nav, Counter Basic, Slosh Gauge de ascenso, Carousel secundario, Animated List, Glide Select, Squish Switch y Aurora. Los componentes y sus adaptaciones viven en presentación. Se conservan la identidad y los colores semánticos; la nueva jerarquía aumenta la legibilidad, coloca la altitud relativa en el resumen y agrupa metadatos secundarios. Consulta [alcance, procedencia y evidencia de React Bits](../features/react-bits.md).
+
+El archivo de Figma contiene diseños móviles, no una pantalla de escritorio separada. La versión ancha reorganiza las mismas secciones con CSS Grid: resumen de vuelo, cuatro indicadores, seis sensores, mapa a la izquierda y gráficas a la derecha. En móvil los indicadores y sensores pasan a dos columnas; cuatro enlaces inferiores permiten navegar por las secciones sin ocultarlas. El logo/nombre permanecen centrados y el menú a la derecha. La recuperación pasa a pantalla completa con desplazamiento vertical, sin recortar contenidos.
 
 ### Recursos
 

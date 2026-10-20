@@ -57,6 +57,14 @@ Las pruebas utilizan el runner nativo de Node y no necesitan un servidor. El bui
 
 Mapa, gráficas y recuperación se cargan bajo demanda. Vite informa que el módulo de ECharts supera 500 kB minificados; la advertencia no se ha ocultado. No impide compilar. Su descarga comprimida ronda 185 kB y se realiza al mostrar gráficas.
 
+### Rediseño móvil y prueba de interfaz
+
+Orbitium incorpora componentes React Bits adaptados a su paleta oscura: navegación inferior Calm, cabecera con menú de tarjetas/Aurora, altitud con Counter Basic, perfil de ascenso, detalles deslizables, filtro secundario y bitácora limpia. Consulta [decisiones, dependencias y evidencia](../docs/features/react-bits.md).
+
+```sh
+npm run test:ui
+```
+
 ## Dónde trabajar
 
 | Cambio                                             | Ubicación                       |

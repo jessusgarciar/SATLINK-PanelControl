@@ -5,6 +5,9 @@
 /.agents/skills/
 /.codex/
 /.roles/
+opencode.json
+components.json
+/.opencode/skills/
 
 # Resultados locales de pruebas del navegador
 /output/playwright/
