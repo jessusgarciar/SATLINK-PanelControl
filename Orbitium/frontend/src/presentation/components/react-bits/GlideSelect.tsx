@@ -42,7 +42,7 @@ type Phase = 'closed' | 'open' | 'closing';
 const SIZES: Record<string, { chip: number; row: number; font: number }> = {
   sm: { chip: 28, row: 26, font: 12 },
   md: { chip: 32, row: 30, font: 13 },
-  lg: { chip: 44, row: 40, font: 14 }
+  lg: { chip: 44, row: 44, font: 16 }
 };
 const PAD = 4;
 const GAP = 1;

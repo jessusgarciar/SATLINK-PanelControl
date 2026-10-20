@@ -8,15 +8,12 @@ Se conserva JetBrains Mono local, fondo `#060A12`, superficies azul oscuro, cian
 
 ## Componentes y decisiones
 
-| Componente React Bits | Integración |
-| --- | --- |
-| Gooey Nav | Barra inferior hasta 760 px, cuatro destinos con icono y etiqueta: Resumen, Mapa, Gráficas y Archivo. Usa los valores reales de Calm: 8 partículas, dispersión 28, oscilación 0,2, tiempo 520 ms, variación 300 ms y cohesión 0,5. Paleta oscura con selección cian. Los enlaces conservan sus fragmentos y el indicador sigue el desplazamiento. |
 | Card Nav | Logo/nombre centrados y menú a la derecha. El selector de fuente, la fase y el tiempo están al inicio del desplegable, antes de las tarjetas Misión, Telemetría y Estación. Cierre con Escape, retorno del foco y cierre exterior. |
 | Counter | Lectura Basic de altitud relativa, sin countdown, sin animación inicial desde cero ni controles de demo. Transición de 0,28 s, tres decimales, sin desenfoque ni rebote. Conserva el valor exacto como texto accesible. |
 | Slosh Gauge | Instrumento de ascenso de solo lectura, escala lanzamiento/mitad/objetivo, marca de posición y porcentaje. Pequeña inercia sin salpicadura ni interacción de volumen. El porcentaje se limita visualmente a 0–100; la altitud numérica sigue mostrando valores por debajo o encima de la referencia. Sin lectura se muestra estado desconocido, no una altura ficticia. |
 | Animated List | Bitácora técnica de solo lectura, filas planas y separadores discretos, sin marco, brillos ni selección ficticia. Se adaptaron roles de listbox/option a list/listitem y se mantuvieron fechas originales. No se mezcla con eventos físicos. |
-| Glide Select | Solo el filtro secundario de ventana del archivo, tamaño táctil, colores oscuros y acento cian. El selector de fuente sigue siendo nativo. |
-| Carousel | Detalles secundarios: GNSS, energía, radio, referencias de vuelo y configuración. Sin autoplay, con flechas, teclado y gesto horizontal. Los valores principales, sensores, mapa y gráficas permanecen fuera del carrusel. |
+| Glide Select | Filtros secundarios de ventana del archivo y velocidad de reproducción histórica, tamaño táctil, colores oscuros y acento cian. El selector de fuente sigue siendo nativo. |
+| Carousel | Detalles secundarios de misión y procedencia/contexto del cálculo de recuperación. Altura según contenido, sin autoplay, con flechas, teclado y gesto horizontal. Los valores principales, sensores, mapa y gráficas permanecen fuera del carrusel. |
 | Squish Switch | Sustituye el checkbox existente de Mapa base, conservando sus efectos y estado deshabilitado. La confirmación MSL de planificación sigue siendo checkbox. |
 | Aurora | Únicamente en la cabecera, carga diferida, azul/cian, una capa, DPR 1, velocidad 0,22 e interacción de cursor desactivada. Se pausa fuera de pantalla; con movimiento reducido se desmonta y permanece el fondo estático. |
 
@@ -28,9 +25,9 @@ Se instalaron las variantes `TS-CSS` desde el [registro oficial](https://reactbi
 
 Composición específica de Orbitium:
 
-- `MissionHeader.tsx`, `MissionNavigation.tsx`, `MissionSummary.tsx`, `MissionDetails.tsx` y `MissionLog.tsx`.
+- `MissionHeader.tsx`, `MissionSummary.tsx`, `MissionDetails.tsx` y `MissionLog.tsx`.
 - `MissionIcon.tsx`: familia SVG de iconos de misión, decorativos cuando acompañan etiquetas.
-- `styles/Mission.css`: paleta, jerarquía, composición responsive y adaptaciones de componentes. La interfaz reserva espacio inferior y utiliza `safe-area-inset-bottom`.
+- `styles/Mission.css`: paleta, jerarquía, composición responsive y adaptaciones de componentes. La interfaz utiliza `safe-area-inset-bottom`, sin espacio reservado para navbar inferior.
 - `tests/mobile-ui.mjs`: verificación reproducible de comportamiento visual.
 
 Adaptaciones relevantes del código de origen:
@@ -50,3 +47,7 @@ Las versiones directas quedan fijadas en `package.json` y `package-lock.json`:
 - No se añadieron Tailwind, GSAP, Three.js ni un router.
 
 La alias `@/*` de `tsconfig.json` permite que shadcn resuelva los destinos del registro; los componentes de aplicación continúan usando imports relativos.
+
+## Vistas de operación
+
+Recuperación, Históricos y Planificación independiente comparten ahora la presentación mobile-first. Alcance, evidencia y verificaciones en [Adaptación móvil de vistas de operación](operation-mobile.md).

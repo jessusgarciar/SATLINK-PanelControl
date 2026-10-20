@@ -94,6 +94,7 @@ export function Dialog({
       aria-label={title}
       onCancel={(e) => {
         e.preventDefault()
+        e.stopPropagation()
         onClose()
       }}
     >
@@ -136,6 +137,7 @@ export function RangeInput({
       </span>
       <input
         type="range"
+        aria-label={label}
         min={min}
         max={max}
         step={step}

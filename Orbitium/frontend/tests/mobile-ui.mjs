@@ -48,7 +48,8 @@ try {
   await page.locator('.mission-map').first().waitFor()
   await page.waitForTimeout(800)
   assert.equal(await page.locator('.spotlight-card').count(), 0)
-  assert.equal(await page.getByRole('navigation', { name: 'Secciones de misión' }).getByRole('link').count(), 4)
+  assert.equal(await page.getByRole('navigation', { name: 'Secciones de misión' }).count(), 0)
+  assert.equal(await page.locator('.mission-bottom-nav').count(), 0)
   assert.equal(await page.locator('.mission-summary').getByRole('meter').count(), 1)
   assert.equal(await page.locator('.mission-summary').getByRole('slider').count(), 0)
   assert.equal(await page.locator('.mission-aurora canvas').evaluate(canvas => canvas.getContext('webgl2')?.isContextLost()), false)
@@ -75,7 +76,7 @@ try {
   assert.equal(await page.getByRole('combobox', { name: 'Fuente de datos' }).count(), 0)
   report.checks.push('Card Nav: controls at top, inert while closed, Escape and restored focus')
 
-  await page.getByRole('link', { name: 'Mapa', exact: true }).click()
+  await page.locator('#mission-map').scrollIntoViewIfNeeded()
   await page.waitForTimeout(800)
   const mapSwitch = page.getByRole('switch', { name: 'Mapa base' }).first()
   const initial = await mapSwitch.getAttribute('aria-checked')
@@ -92,7 +93,7 @@ try {
   await follow.click()
   await page.locator('.leaflet-control-zoom-in').first().click()
   report.frames.map = await frames(page)
-  report.checks.push('Gooey navigation, map switch, drag, follow and zoom')
+  report.checks.push('No main bottom navbar; map switch, drag, follow and zoom')
 
   await page.locator('.mission-details').scrollIntoViewIfNeeded()
   const current = page.locator('.carousel-slide[data-current="true"]')
@@ -132,7 +133,7 @@ try {
   await page.setViewportSize({ width: 393, height: 852 })
   report.checks.push('All 5 detail cards fit content with 12–24px bottom spacing at 320/393/430/1366px')
 
-  await page.getByRole('link', { name: 'Archivo', exact: true }).click()
+  await page.locator('#mission-archive').scrollIntoViewIfNeeded()
   await page.waitForTimeout(700)
   const filter = page.getByRole('combobox', { name: 'Ventana del archivo' })
   await filter.click()
@@ -148,6 +149,95 @@ try {
   await page.getByRole('list', { name: 'Entradas de bitácora técnica' }).scrollIntoViewIfNeeded()
   await page.getByRole('listitem').first().waitFor({ state: 'visible' })
   report.checks.push('Archive filter, CSV download, history dialog, read-only technical log')
+
+  async function checkWorkspace(dialog, name, viewport) {
+    const layout = await dialog.evaluate(element => {
+      const rect = element.getBoundingClientRect()
+      const heading = element.querySelector('.dialog-heading')
+      const controls = [...element.querySelectorAll('button, input:not([type="checkbox"]), select, [role="combobox"]')]
+        .filter(control => control.getBoundingClientRect().width > 0 && !control.closest('[inert]'))
+      return {
+        left: rect.left, right: rect.right, bottom: rect.bottom,
+        overflow: element.scrollWidth - element.clientWidth,
+        titleSize: parseFloat(getComputedStyle(heading.querySelector('h2')).fontSize),
+        smallControls: controls.filter(control => control.getBoundingClientRect().height < 43).map(control => control.outerHTML.slice(0, 180)),
+        smallFields: controls.filter(control => control.matches('input, select') && parseFloat(getComputedStyle(control).fontSize) < 16).length,
+      }
+    })
+    assert.ok(layout.left >= -1 && layout.right <= viewport.width + 1 && layout.bottom <= viewport.height + 1, `${name} outside viewport: ${JSON.stringify(layout)}`)
+    assert.ok(layout.overflow <= 1, `${name} horizontal overflow: ${JSON.stringify(layout)}`)
+    assert.ok(layout.titleSize >= 16, `${name} title too small`)
+    assert.deepEqual(layout.smallControls, [], `${name} touch controls too small`)
+    assert.equal(layout.smallFields, 0, `${name} fields must be at least 16px`)
+    await dialog.evaluate(element => { element.scrollTop = element.scrollHeight })
+    const closeBox = await dialog.getByRole('button', { name: 'Cerrar diálogo' }).boundingBox()
+    assert.ok(closeBox.y >= 0 && closeBox.y + closeBox.height <= viewport.height, `${name} close button must stay visible`)
+    await dialog.evaluate(element => { element.scrollTop = 0 })
+  }
+
+  for (const viewport of [{ width: 320, height: 568 }, { width: 393, height: 852 }, { width: 430, height: 900 }, { width: 852, height: 393 }, { width: 1366, height: 900 }]) {
+    await page.setViewportSize(viewport)
+    await page.getByRole('button', { name: /Recuperación/ }).click()
+    const recovery = page.getByRole('dialog', { name: 'Recuperación · Rastreo y predicción', exact: true })
+    await recovery.locator('.leaflet-host').waitFor()
+    await checkWorkspace(recovery, 'Recovery', viewport)
+    await capture(page, `recovery-${viewport.width}`)
+    if (viewport.width === 393) {
+      await recovery.locator('.predictor-panel').scrollIntoViewIfNeeded()
+      const ascent = recovery.getByRole('slider', { name: /Vel\. ascenso/ })
+      const initialAscent = Number(await ascent.inputValue())
+      await ascent.focus()
+      await ascent.press('ArrowRight')
+      assert.ok(Number(await ascent.inputValue()) > initialAscent)
+      await capture(page, 'recovery-parameters-393')
+    }
+    await recovery.locator('.prediction-panel').scrollIntoViewIfNeeded()
+    await recovery.locator('.prediction-panel').waitFor()
+    const next = recovery.getByRole('button', { name: 'Detalle siguiente' })
+    if (await next.count()) {
+      await next.click()
+      await page.waitForTimeout(700)
+      assert.match(await recovery.locator('.carousel-slide[data-current="true"]').textContent(), /Referencias utilizadas/)
+    }
+    await recovery.getByRole('button', { name: /Planificación independiente/ }).click()
+    const planning = page.getByRole('dialog', { name: 'Planificación independiente', exact: true })
+    await planning.locator('.planning-map').waitFor()
+    await checkWorkspace(planning, 'Planning', viewport)
+    if (viewport.width === 393) await capture(page, 'planning-overview-393')
+    const submit = planning.getByRole('button', { name: 'Generar predicción' })
+    assert.equal(await submit.isDisabled(), true)
+    await planning.getByRole('checkbox').check()
+    await planning.getByRole('spinbutton', { name: 'Latitud · grados', exact: true }).fill('91')
+    assert.equal(await submit.isDisabled(), true)
+    await planning.getByRole('spinbutton', { name: 'Latitud · grados', exact: true }).fill('20')
+    assert.equal(await submit.isEnabled(), true)
+    await capture(page, `planning-${viewport.width}`)
+    await page.keyboard.press('Escape')
+    await planning.waitFor({ state: 'detached' })
+    assert.equal(await recovery.isVisible(), true, 'Escape must only close the nested planning dialog')
+    assert.equal(await recovery.getByRole('button', { name: /Planificación independiente/ }).evaluate(element => element === document.activeElement), true)
+    assert.equal(await page.evaluate(() => document.body.style.overflow), 'hidden')
+    await recovery.getByRole('button', { name: /Planificación independiente/ }).click()
+    await planning.getByRole('checkbox').check()
+    await planning.getByRole('button', { name: 'Generar predicción' }).click()
+    await planning.waitFor({ state: 'detached' })
+    await recovery.getByRole('button', { name: 'Cerrar diálogo' }).click()
+
+    await page.getByRole('button', { name: /Histórico/ }).click()
+    const history = page.getByRole('dialog', { name: 'Reproducción histórica', exact: true })
+    await history.locator('.leaflet-host').waitFor()
+    await checkWorkspace(history, 'History', viewport)
+    const speed = history.getByRole('combobox', { name: 'Velocidad de reproducción' })
+    await speed.click()
+    await history.getByRole('option', { name: '5×', exact: true }).click()
+    assert.match(await speed.textContent(), /5×/)
+    await history.getByRole('button', { name: /Reproducir/ }).click()
+    await history.getByRole('button', { name: /Pausar/ }).click()
+    await capture(page, `history-${viewport.width}`)
+    await page.keyboard.press('Escape')
+    await history.waitFor({ state: 'detached' })
+  }
+  report.checks.push('Recovery, history and nested planning at 320/393/430/852/1366px: reflow, touch sizes, 16px fields, sticky close, Escape/focus, validation, demo prediction and replay speed/play/pause')
 
   for (const width of [320, 393, 430, 852, 1366]) {
     await page.setViewportSize({ width, height: width > 760 ? 900 : 852 })
@@ -200,13 +290,13 @@ try {
   fallback.on('pageerror', error => errors.push(error.message))
   await fallback.goto('http://127.0.0.1:5188', { waitUntil: 'networkidle' })
   await fallback.locator('.mission-summary').waitFor()
-  assert.equal(await fallback.locator('.gooey-nav__fallback').evaluate(element => getComputedStyle(element).display), 'block')
-  await fallback.getByRole('link', { name: 'Mapa', exact: true }).click()
+  assert.equal(await fallback.locator('.mission-bottom-nav').count(), 0)
+  await fallback.locator('#mission-map').scrollIntoViewIfNeeded()
   await fallback.waitForTimeout(800)
-  assert.equal(await fallback.getByRole('link', { name: 'Mapa', exact: true }).getAttribute('aria-current'), 'page')
+  assert.equal(await fallback.locator('#mission-map').isVisible(), true)
   await capture(fallback, 'webgl-fallback')
   await fallbackContext.close()
-  report.checks.push('WebGL unavailable: static header and functional Gooey fallback navigation')
+  report.checks.push('WebGL unavailable: static header and accessible map without main navbar')
 
   await page.emulateMedia({ forcedColors: 'none' })
   await page.evaluate(() => scrollTo({ top: 0, behavior: 'instant' }))

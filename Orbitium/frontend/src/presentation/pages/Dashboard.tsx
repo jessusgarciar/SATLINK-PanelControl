@@ -13,10 +13,8 @@ import CommandPanel from '../components/CommandPanel.tsx'
 import { DataCard, Definition, SectionTitle } from '../components/ui.tsx'
 import MissionHeader from '../components/MissionHeader.tsx'
 import MissionSummary from '../components/MissionSummary.tsx'
-import MissionNavigation from '../components/MissionNavigation.tsx'
 import MissionDetails from '../components/MissionDetails.tsx'
 import MissionLog from '../components/MissionLog.tsx'
-import { useMediaQuery } from '../hooks/useMediaQuery.ts'
 
 const MissionMap = lazy(() => import('../components/MissionMap.tsx'))
 const TelemetryCharts = lazy(() => import('../components/TelemetryCharts.tsx'))
@@ -33,7 +31,6 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
   const state = useMission(controller)
   const now = useNow()
   const [recoveryOpen, setRecoveryOpen] = useState(false)
-  const mobile = useMediaQuery('(max-width: 760px)')
   const [windowKey, setWindowKey] = useState<WindowKey>('1h')
   const [replayRange, setReplayRange] = useState<TimeRange | null>(null)
   const snapshot = state.snapshot
@@ -288,7 +285,6 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
           </>
         )}
       </main>
-      {mobile && snapshot && <MissionNavigation />}
     </div>
   )
 }
