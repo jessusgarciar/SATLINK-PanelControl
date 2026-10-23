@@ -3,6 +3,7 @@ from pydantic import Field, field_validator
 from app.presentation.schemas.uplink import utc_time
 from app.presentation.schemas.base import DTO, Position
 from app.presentation.schemas.prediction import PredictionDTO, PredictionSettingsDTO
+from app.presentation.schemas.commands import CommandDTO, CommandSettingsDTO
 
 
 class MissionConfig(DTO):
@@ -123,14 +124,15 @@ class IngestionDTO(DTO):
 
 
 class Permissions(DTO):
-    canCommand: Literal[False] = False
+    canCommand: bool = False
     canPredict: bool = False
 
 
 class DashboardDTO(DTO):
     mission: MissionDTO
     telemetry: list[TelemetryDTO]
-    commands: Annotated[list, Field(max_length=0)] = Field(default_factory=list)
+    commands: Annotated[list[CommandDTO], Field(max_length=100)] = Field(default_factory=list)
+    commandSettings: CommandSettingsDTO = Field(default_factory=CommandSettingsDTO)
     events: Annotated[list, Field(max_length=0)] = Field(default_factory=list)
     prediction: "PredictionDTO | None" = None
     permissions: Permissions = Field(default_factory=Permissions)

@@ -120,10 +120,6 @@ El cliente ofrece ventanas de 15 minutos, 1 hora, 6 horas, 24 horas y todo el ar
 { "type": "PING", "clientRequestId": "UUID-generado-por-el-cliente" }
 ```
 
-Además de CSRF se envía `Idempotency-Key` con el mismo UUID. El backend debe imponer unicidad por misión/operador/ID y devolver el mismo registro ante duplicados. Los tipos admitidos son `PING`, `STATUS`, `TELEMETRY`, `BEACON_ON`, `BEACON_OFF` y `RELEASE_NOW`.
-
-`Command`: `id`, `missionId`, `clientRequestId`, `type`, `status`, `createdAt`, `updatedAt`, `evidence`, `simulated`. En la estación real, `simulated` es `false`.
-
 | Estado     | Evidencia esperada                                                   |
 | ---------- | -------------------------------------------------------------------- |
 | `pending`  | Solicitud autorizada y persistida                                    |

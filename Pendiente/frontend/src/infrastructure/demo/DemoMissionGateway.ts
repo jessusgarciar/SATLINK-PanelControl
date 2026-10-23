@@ -221,10 +221,10 @@ export class DemoMissionGateway implements MissionGateway {
     )
     this.later(() => {
       advance('executed', 'SIMULADO · respuesta de ejecución del firmware.')
-      if (type === 'BEACON_ON' || type === 'BEACON_OFF') {
+      if (type === 'START_MISSION' && !this.data.mission.startedAt) {
         this.data.mission = {
           ...this.data.mission,
-          beaconOn: type === 'BEACON_ON',
+          startedAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         }
         this.emit({ type: 'mission', data: this.data.mission })

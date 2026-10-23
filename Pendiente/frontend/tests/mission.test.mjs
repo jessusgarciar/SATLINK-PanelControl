@@ -205,7 +205,7 @@ test('controller merges real-time packets with snapshot, keeps data through disc
   stop()
   assert.equal(f.disconnects, 1)
 })
-test('commands need recent data, operator permission and connected transport', async () => {
+test('diagnostics require permission and connection; starting additionally requires recent data', async () => {
   const f = fakeGateway()
   const controller = new MissionController(f.gateway)
   const stop = controller.start()
@@ -224,9 +224,28 @@ test('commands need recent data, operator permission and connected transport', a
   const stale = new MissionController(f.gateway)
   const stopStale = stale.start()
   await setImmediate()
-  assert.equal(await stale.sendCommand('PING'), false)
-  assert.equal(f.sends, 0)
+  assert.equal(await stale.sendCommand('START_MISSION', true), false)
+  assert.equal(await stale.sendCommand('PING'), true)
+  assert.equal(f.sends, 1)
   stopStale()
+  stop()
+})
+test('start needs confirmation, stays pending without starting timers and cannot be duplicated', async () => {
+  const f = fakeGateway()
+  f.snapshot.mission.startedAt = null
+  f.snapshot.commandSettings = { enabled: true, supportedTypes: ['START_MISSION', 'PING'], reason: null, uplinkIntervalSeconds: 21600 }
+  const controller = new MissionController(f.gateway)
+  const stop = controller.start()
+  await setImmediate()
+  assert.equal(await controller.sendCommand('START_MISSION'), false)
+  assert.equal(await controller.sendCommand('START_MISSION', true), true)
+  assert.equal(controller.getSnapshot().snapshot.mission.startedAt, null)
+  assert.equal(await controller.sendCommand('START_MISSION', true), false)
+  assert.equal(await controller.sendCommand('RELEASE_NOW', true), false)
+  assert.equal(f.sends, 1)
+  const startedAt = new Date().toISOString()
+  f.emit({ type: 'mission', data: { ...f.snapshot.mission, startedAt, updatedAt: startedAt } })
+  assert.equal(controller.getSnapshot().snapshot.mission.startedAt, startedAt)
   stop()
 })
 test('release requires explicit confirmation and cannot be queued twice', async () => {

@@ -63,3 +63,19 @@ class PredictionAttemptRow(Base):
     raw_response: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     normalized: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     error: Mapped[str | None] = mapped_column(String(128))
+
+
+class CommandRow(Base):
+    __tablename__ = "commands"
+    __table_args__ = (
+        UniqueConstraint("mission_id", "client_request_id", name="uq_command_request"),
+        Index("ix_command_mission_created", "mission_id", "created_at", "id"),
+        CheckConstraint("status IN ('pending','sent','received','executed','rejected','expired')", name="ck_command_status"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    mission_id: Mapped[str] = mapped_column(ForeignKey("missions.id"))
+    client_request_id: Mapped[str] = mapped_column(String(36))
+    kind: Mapped[str] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(String(16))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    data: Mapped[dict[str, Any]] = mapped_column(JSONB)

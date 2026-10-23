@@ -6,7 +6,7 @@ Fecha: 2 de octubre de 2026. Base del repositorio: `1bff7bc58cd196c161195fcdb822
 
 - Dashboard adaptable con indicadores de misión, seis sensores, mapa GPS, altitud relativa y cuatro gráficas.
 - Recuperación a pantalla completa con trayectoria medida, escenario/predicción, parámetros y coordenadas copiables.
-- Controles de baliza, PING, estado, telemetría y liberación con confirmación; bitácora de estados y evidencias.
+- Inicio de misión con confirmación, PING, estado, telemetría y liberación simulada; bitácora de estados y evidencias. Los envíos reales requieren un perfil de firmware compatible.
 - Demostración explícita, pausa de señal y detección de datos antiguos.
 - Adaptadores Fetch/WebSocket con validación, permisos del cliente, CSRF, idempotencia, reconexión y conservación de lecturas.
 - Contrato propuesto de FastAPI, ejemplo JSON, documentación de arquitectura y 17 pruebas automatizadas.

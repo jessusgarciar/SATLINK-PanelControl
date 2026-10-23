@@ -168,8 +168,7 @@ export function parseCommand(value: unknown): Command {
       'PING',
       'STATUS',
       'TELEMETRY',
-      'BEACON_ON',
-      'BEACON_OFF',
+      'START_MISSION',
       'RELEASE_NOW',
     ]),
     status: oneOf<CommandStatus>(c.status, [
@@ -255,6 +254,7 @@ export function parseSnapshot(value: unknown, missionId: string): DashboardSnaps
   const events = array(s.events, parseEvent)
   const prediction = s.prediction === null ? null : parsePrediction(s.prediction)
   const settings = s.predictionSettings == null ? null : record(s.predictionSettings)
+  const commandSettings = s.commandSettings == null ? null : record(s.commandSettings)
   if (
     [...telemetry, ...commands, ...events, ...(prediction ? [prediction] : [])].some(
       (item) => item.missionId !== missionId,
@@ -263,6 +263,12 @@ export function parseSnapshot(value: unknown, missionId: string): DashboardSnaps
     throw new Error('La respuesta contiene datos de otra misión.')
   return {
     mission,
+    ...(commandSettings === null ? {} : { commandSettings: {
+      enabled: bool(commandSettings.enabled),
+      supportedTypes: array(commandSettings.supportedTypes, (value) => oneOf<CommandType>(value, ['PING', 'STATUS', 'TELEMETRY', 'START_MISSION', 'RELEASE_NOW'])),
+      reason: commandSettings.reason == null ? null : str(commandSettings.reason),
+      uplinkIntervalSeconds: between(commandSettings.uplinkIntervalSeconds, 1, 86400),
+    } }),
     ...(settings === null ? {} : { predictionSettings: {
       enabled: bool(settings.enabled),
       launchAltitudeReference: oneOf(settings.launchAltitudeReference, ['MSL', 'unknown'] as const),

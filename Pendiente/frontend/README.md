@@ -18,10 +18,9 @@ Abre la dirección que indique Vite, normalmente `http://localhost:5174`. El mod
 
 1. Observa fase, tiempos, altitudes, sensores, radio, posición y cuatro gráficas con actualización cada segundo.
 2. Abre **Recuperación** para ver lanzamiento, trayectoria medida, liberación estimada y aterrizaje predicho. Modifica los rangos y pulsa **Recalcular escenario**. Los vientos constantes son ficticios.
-3. Pulsa **PING**, **STATUS?**, **TELEM?** o la baliza. La bitácora distingue pendiente, enviado, recibido y ejecutado, con evidencias simuladas.
-4. **RELEASE** abre una confirmación. Escribe `LIBERAR` para simular descenso y un evento de liberación independiente del estado del comando.
-5. **Pausar señal** detiene las muestras. Tras 15 segundos, el panel marca datos antiguos y deshabilita comandos. **Reanudar señal** recupera la actualización.
-6. Abre **Menú** en la cabecera y cambia a **ESTACIÓN REAL** para usar el backend configurado. Allí aparecen fuente, fase y reloj antes de los accesos a las secciones. Si está desconectado aparece un error explícito. Nunca se sustituye automáticamente por una simulación.
+3. **RELEASE** abre una confirmación. Escribe `LIBERAR` para simular descenso y un evento de liberación independiente del estado del comando.
+4. **Pausar señal** detiene las muestras. Tras 15 segundos, el panel marca datos antiguos y deshabilita comandos. **Reanudar señal** recupera la actualización.
+5. Abre **Menú** en la cabecera y cambia a **ESTACIÓN REAL** para usar el backend configurado. Allí aparecen fuente, fase y reloj antes de los accesos a las secciones. Si está desconectado aparece un error explícito. Nunca se sustituye automáticamente por una simulación.
 
 Recarga la página o cambia de fuente para comenzar un escenario nuevo. La demo no persiste ni transmite órdenes físicas.
 

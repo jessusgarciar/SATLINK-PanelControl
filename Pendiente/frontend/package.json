@@ -9,6 +9,7 @@
     "lint": "oxlint src tests",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "test:ui": "node tests/mobile-ui.mjs",
+    "test:commands-ui": "node tests/commands-ui.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

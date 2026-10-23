@@ -1,6 +1,6 @@
 # Ejecutar el backend de telemetría y predicción
 
-Permite recibir telemetría, persistirla en PostgreSQL, consultar el historial y actualizar el panel por WebSocket. La predicción Tawhiri es opcional y permanece deshabilitada hasta configurar sus referencias de altitud. El servicio se ejecuta únicamente en localhost, sin login inicial. No habilita telecomandos.
+Permite recibir telemetría, persistirla en PostgreSQL, consultar el historial y actualizar el panel por WebSocket. La predicción Tawhiri es opcional y permanece deshabilitada hasta configurar sus referencias de altitud. El servicio se ejecuta únicamente en localhost, sin login inicial. Los comandos permanecen deshabilitados sin un perfil de firmware compatible; consulta [Comandos](../features/commands.md).
 
 Incorpora estados de ingestión MQTT, metadatos de dispositivo/radio, ventanas temporales y exportación CSV. La reproducción histórica y la bitácora técnica pertenecen al frontend. Se mantiene el codec binario de 19 bytes; no es necesario instalar Tkinter, SQLite ni Paho MQTT.
 
@@ -71,7 +71,7 @@ La estación real muestra telemetría y trayectoria. `canCommand` permanece en `
 
 ## Habilitar predicción local
 
-La migración de Alembic agrega almacenamiento de predicciones y cadencia sin reemplazar la telemetría existente. Mantén el comando `python -m alembic upgrade head` antes de iniciar.
+Las migraciones de Alembic agregan almacenamiento de predicciones, cadencia y solicitudes de comandos sin reemplazar la telemetría existente. Mantén el comando `python -m alembic upgrade head` antes de iniciar.
 
 Desde `backend`, copia `prediction-settings.example.json` a `prediction-settings.local.json` y sustituye el ID de ejemplo por la misión registrada. Comprueba las referencias contra la configuración/documentación de la fuente: MSL significa metros sobre el nivel del mar. Si desconoces la referencia, conserva `unknown`; no declares MSL solo para habilitar el botón. El archivo local queda fuera de Git. Ejemplo de estructura:
 
