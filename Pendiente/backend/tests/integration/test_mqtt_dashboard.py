@@ -2,6 +2,7 @@ import asyncio
 import csv
 import io
 import json
+import struct
 from types import SimpleNamespace
 
 import pytest
@@ -17,8 +18,17 @@ from app.infrastructure.mqtt import consumer
 pytestmark = pytest.mark.integration
 
 
-async def test_mqtt_uplink_reaches_committed_database_websocket_and_full_http_exports(store, db_url, make_uplink, monkeypatch):
-    topic, payload = make_uplink(dr=3, txInfo={"frequency": 902300000},
+@pytest.mark.parametrize("binary,port,expected", [
+    (None, 10, {"temperatureC": 26.12}),
+    (bytes([0x42]) + struct.pack("<iiH", 210000000, -1020000000, 2000),
+     17, {"temperatureC": None, "latitude": 21, "longitude": -102, "altitudeGpsM": 2000}),
+    (bytes([0x82]) + struct.pack("<hHBHBBB", 2500, 8000, 45, 3800, 80, 8, 9),
+     17, {"temperatureC": 25, "humidityPct": 45, "batteryV": 3.8}),
+    (bytes([0xc2]) + struct.pack("<HHBh", 20, 900, 10, -52) + bytes(3),
+     17, {"temperatureC": None, "verticalSpeedMs": -5.2}),
+])
+async def test_mqtt_uplink_reaches_committed_database_websocket_and_full_http_exports(store, db_url, make_uplink, monkeypatch, binary, port, expected):
+    topic, payload = make_uplink(binary, fPort=port, dr=3, txInfo={"frequency": 902300000},
                                 note='Entrada SINTÉTICA, "áéíóú"')
     raw_event = json.loads(payload)
     attempts, subscriptions, removals, published = [], [], [], []
@@ -33,8 +43,8 @@ async def test_mqtt_uplink_reaches_committed_database_websocket_and_full_http_ex
         async def __aexit__(self, *args):
             pass
 
-        async def unsubscribe(self, subscribed_topic):
-            removals.append(subscribed_topic)
+        async def unsubscribe(self, topic):
+            removals.append(topic)
 
         async def subscribe(self, subscribed_topic, qos):
             subscriptions.append((subscribed_topic, qos))
@@ -93,21 +103,27 @@ async def test_mqtt_uplink_reaches_committed_database_websocket_and_full_http_ex
                 assert telemetry == published
                 assert len(telemetry) == 1
                 sample = telemetry[0]
-                assert sample["temperatureC"] == 26.12
+                for field, value in expected.items():
+                    assert sample[field] == value
                 assert sample["radio"] == {"gatewayId": "strong", "frequencyHz": 902300000,
-                                            "dataRate": 3, "fPort": 10}
+                                            "dataRate": 3, "fPort": port}
                 snapshot = client.get("/api/v1/missions/test-flight/dashboard").json()
                 window = client.get("/api/v1/missions/test-flight/telemetry/window").json()
                 history = client.get("/api/v1/missions/test-flight/telemetry").json()
                 assert snapshot["telemetry"] == history["items"] == window["series"] == [sample]
                 assert snapshot["ingestion"]["status"] == "offline"
-                assert window["total"] == 1 and window["track"] == []
+                assert window["total"] == 1
+                assert len(window["track"]) == (1 if sample["latitude"] is not None else 0)
                 response = client.get("/api/v1/missions/test-flight/telemetry/export.csv")
                 assert response.status_code == 200
                 rows = list(csv.DictReader(io.StringIO(response.content.decode("utf-8-sig"))))
                 assert len(rows) == 1
                 assert rows[0]["id"] == sample["id"]
-                assert rows[0]["temperatureC"] == "26.12"
+                for field, value in expected.items():
+                    if value is None:
+                        assert rows[0][field] == ""
+                    else:
+                        assert float(rows[0][field]) == value
                 assert rows[0]["source"] == "test-chirpstack"
                 assert rows[0]["applicationId"] == "test-app"
                 assert rows[0]["devEui"] == "0102030405060708"

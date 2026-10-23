@@ -152,7 +152,7 @@ async def test_http_contract_and_typescript_parsers(store, db_url, make_uplink):
         for url in ("telemetry?limit=0", "telemetry?limit=1201", "telemetry?cursor=bad", "telemetry?from=2026-10-02", "telemetry?from=2026-10-03T00:00:00Z&to=2026-10-02T00:00:00Z"):
             assert (await client.get("/api/v1/missions/test-flight/" + url)).status_code == 422
         assert (await client.get("/api/v1/missions/missing/dashboard")).status_code == 404
-        assert (await client.post("/api/v1/missions/test-flight/commands", json={})).status_code == 404
+        assert (await client.post("/api/v1/missions/test-flight/commands", json={})).status_code == 422
         assert (await client.get("/docs")).status_code == 200
         assert "/api/v1/missions/{mission_id}/telemetry" in (await client.get("/openapi.json")).json()["paths"]
         assert (await client.get("/docs", headers={"Origin": "https://evil.example"})).status_code == 403

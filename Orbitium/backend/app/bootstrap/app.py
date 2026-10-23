@@ -1,6 +1,7 @@
 import asyncio
 import secrets
 import math
+from pathlib import Path
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager, contextmanager, suppress
 from typing import Annotated, AsyncIterator, Iterator
@@ -11,14 +12,15 @@ from app.application.use_cases.ingestion_state import IngestionState
 from app.application.use_cases.query_telemetry import QueryTelemetry
 from app.bootstrap.config import Settings
 from app.bootstrap.demo import DEMO_MISSION
-from app.domain.entities.telemetry import MissionNotFound
+from app.domain.entities.telemetry import MissionNotFound, ConfigurationConflict
 from app.domain.entities.telemetry import JsonObject
 from app.infrastructure.database.store import PostgresStore
 from app.infrastructure.mqtt.consumer import consume
 from app.infrastructure.mqtt.picaro import decode_payload
 from app.presentation.api.local import LocalOnlyMiddleware
 from app.presentation.api.streaming import CsvStreamingResponse
-from app.presentation.schemas.api import DashboardDTO, HistoryDTO, WindowDTO
+from app.presentation.schemas.api import DashboardDTO, HistoryDTO, WindowDTO, MissionDTO, MissionParameters
+from app.infrastructure.mission_settings import MissionSettings
 from app.presentation.schemas.uplink import ChirpStackDecoder, utc_time
 from app.presentation.websocket.hub import TelemetryHub
 from app.application.ports.prediction import PredictionProvider
@@ -26,12 +28,18 @@ from app.application.use_cases.predict import PredictMission
 from app.domain.entities.prediction import PredictionCooldown, PredictionInvalid, PredictionTimeout, PredictionUnavailable
 from app.infrastructure.prediction.tawhiri import TawhiriProvider
 from app.presentation.schemas.prediction import PredictionDTO, PredictionRequest, DemoPredictionRequest, DemoPredictionSession
+from app.application.ports.commands import CommandTransport
+from app.application.use_cases.commands import RequestCommand
+from app.domain.entities.commands import COMMAND_TYPES, CommandConflict, CommandUnavailable
+from app.infrastructure.mqtt.commands import CommandProfile, ChirpStackCommands
+from app.presentation.schemas.commands import CommandRequest, CommandDTO
 
 
 def create_app(settings: Settings, store: PostgresStore | None = None,
                publisher: TelemetryHub | None = None, *,
                prediction_provider: PredictionProvider | None = None,
-               mqtt_topic: str | None = None) -> FastAPI:
+               mqtt_topic: str | None = None, mission_path: Path | None = None,
+               command_transport: CommandTransport | None = None) -> FastAPI:
     if settings.mqtt_enabled and not mqtt_topic:
         raise ValueError("El topic MQTT de la misión es obligatorio cuando MQTT está habilitado")
     repository = store if store is not None else PostgresStore(settings.database_url)
@@ -44,6 +52,24 @@ def create_app(settings: Settings, store: PostgresStore | None = None,
         provider = TawhiriProvider(settings.prediction_url)
     predictor = None if provider is None else PredictMission(repository, provider, hub)
     csrf_token = secrets.token_urlsafe(32)
+    mission_settings = MissionSettings(repository, mission_path or Path(__file__).resolve().parents[2] / "mission.local.json")
+    mqtt_commands = None
+    if settings.command_profile_file:
+        path = Path(settings.command_profile_file)
+        if not path.is_absolute():
+            path = Path(__file__).resolve().parents[2] / path
+        profile = CommandProfile.load(path)
+        expected_topic = f"application/{profile.application_id}/device/{profile.device_eui}/event/up"
+        if not settings.mqtt_enabled or settings.source != profile.source or mqtt_topic != expected_topic:
+            raise ValueError("El perfil de comandos debe coincidir con el origen y topic de la misión activa")
+        mqtt_commands = ChirpStackCommands(settings, profile)
+        command_transport = mqtt_commands
+    commander = RequestCommand(repository, hub, command_transport)
+
+    async def ingest(topic: str, payload: bytes) -> object:
+        if mqtt_commands is not None and topic in mqtt_commands.event_topics:
+            return await mqtt_commands.ingest_evidence(topic, payload, commander)
+        return await ingestor.execute(topic, payload)
 
     def source_of(snapshot: dict) -> str:
         metadata = snapshot.get("ingestion") or {}
@@ -69,7 +95,8 @@ def create_app(settings: Settings, store: PostgresStore | None = None,
             if settings.mqtt_enabled:
                 task = asyncio.create_task(consume(settings.mqtt_host, settings.mqtt_port,
                     settings.mqtt_username, settings.mqtt_password, settings.mqtt_tls,
-                    settings.mqtt_client_id, mqtt_topic, ingestor.execute, ingestion.update))
+                    settings.mqtt_client_id, mqtt_topic, ingest, ingestion.update,
+                    *([mqtt_commands.event_topics] if mqtt_commands is not None else [])))
             yield
         finally:
             try:
@@ -91,11 +118,13 @@ def create_app(settings: Settings, store: PostgresStore | None = None,
     app.state.ingestion = ingestion
     app.state.prediction_csrf_token = csrf_token
     app.state.predictor = predictor
+    app.state.commander = commander
 
     @app.get("/api/v1/missions/{mission_id}/dashboard", response_model=DashboardDTO)
     async def dashboard(mission_id: str, limit: Annotated[int, Query(ge=1, le=1200)] = 1200) -> dict:
         try:
             snapshot = await repository.dashboard(mission_id, limit)
+            snapshot["mission"] = await mission_settings.populate_application_name(snapshot["mission"])
             snapshot["ingestion"] = ingestion.snapshot(source_of(snapshot))
             references = settings.prediction_references.get(mission_id, {})
             # Una misión sin datum oficial aún puede planear desde un origen manual MSL.
@@ -104,8 +133,14 @@ def create_app(settings: Settings, store: PostgresStore | None = None,
             if settings.prediction_enabled:
                 snapshot["prediction"] = await repository.latest_prediction(mission_id)
                 next_allowed = await repository.prediction_next_allowed_at(mission_id)
-            snapshot["permissions"] = {"canCommand": False, "canPredict": can_predict}
-            snapshot["csrfToken"] = csrf_token if can_predict else None
+            can_command = (command_transport is not None and command_transport.supports(snapshot["mission"]) and
+                           (mqtt_commands is None or source_of(snapshot) == settings.source))
+            supported = list(mqtt_commands.profile.payload_hex) if mqtt_commands else list(COMMAND_TYPES)
+            snapshot["permissions"] = {"canCommand": can_command, "canPredict": can_predict}
+            snapshot["commandSettings"] = {"enabled": can_command, "supportedTypes": supported if can_command else [],
+                "reason": None if can_command else "Pendiente de protocolo de comandos en firmware Heltec y perfil coincidente",
+                "uplinkIntervalSeconds": 21600}
+            snapshot["csrfToken"] = csrf_token
             snapshot["predictionSettings"] = {"enabled": settings.prediction_enabled,
                 "launchAltitudeReference": references.get("launchAltitudeReference", "unknown"),
                 "gpsAltitudeReference": references.get("gpsAltitudeReference", "unknown"),
@@ -113,6 +148,45 @@ def create_app(settings: Settings, store: PostgresStore | None = None,
             return snapshot
         except MissionNotFound as exc:
             raise HTTPException(404, "Misión inexistente") from exc
+
+    @app.post("/api/v1/missions/{mission_id}/commands", response_model=CommandDTO, status_code=202)
+    async def request_command(mission_id: str, payload: CommandRequest, request: Request) -> dict:
+        token = request.headers.get("X-CSRF-Token", "")
+        if (request.headers.get("Origin") not in settings.allowed_origins or
+                not secrets.compare_digest(token.encode("utf-8"), csrf_token.encode("ascii"))):
+            raise HTTPException(403, "Origen o token inválidos")
+        if request.headers.get("Idempotency-Key") != str(payload.clientRequestId):
+            raise HTTPException(422, "Idempotency-Key debe coincidir con clientRequestId")
+        try:
+            snapshot = await repository.dashboard(mission_id, 1)
+            if mqtt_commands is not None and source_of(snapshot) != settings.source:
+                raise CommandUnavailable("El origen persistido de la misión no coincide con el perfil MQTT")
+            if mqtt_commands is not None and payload.type not in mqtt_commands.profile.payload_hex:
+                raise CommandUnavailable("Este comando no está definido en el perfil del firmware")
+            return await commander.execute(snapshot["mission"], str(payload.clientRequestId), payload.type)
+        except MissionNotFound as exc:
+            raise HTTPException(404, "Misión inexistente") from exc
+        except CommandConflict as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except CommandUnavailable as exc:
+            raise HTTPException(503, str(exc)) from exc
+
+    @app.put("/api/v1/missions/{mission_id}/parameters", response_model=MissionDTO)
+    async def update_parameters(mission_id: str, payload: MissionParameters, request: Request) -> dict:
+        token = request.headers.get("X-CSRF-Token", "")
+        if (request.headers.get("Origin") not in settings.allowed_origins or
+                not secrets.compare_digest(token.encode("utf-8"), csrf_token.encode("ascii"))):
+            raise HTTPException(403, "Origen o token inválidos")
+        try:
+            mission = await mission_settings.update(mission_id, payload)
+        except MissionNotFound as exc:
+            raise HTTPException(404, "Misión inexistente") from exc
+        except ConfigurationConflict as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except (OSError, ValueError) as exc:
+            raise HTTPException(503, "No se pudo guardar la configuración local de la misión") from exc
+        hub.send(mission_id, {"type": "mission", "data": mission})
+        return mission
 
     @app.post("/api/v1/missions/{mission_id}/predictions", response_model=PredictionDTO)
     async def predict(mission_id: str, payload: PredictionRequest, request: Request) -> dict:

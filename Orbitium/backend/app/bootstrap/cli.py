@@ -55,6 +55,9 @@ def main() -> None:
     commands.add_parser("serve")
     init = commands.add_parser("init-mission")
     init.add_argument("--file", type=Path, required=True)
+    identity = commands.add_parser("check-identity", help="Comparar DevEUI del firmware, misión local y PostgreSQL")
+    identity.add_argument("--file", type=Path, default=Path(__file__).resolve().parents[2] / "mission.local.json")
+    identity.add_argument("--firmware", type=Path, required=True)
     check = commands.add_parser("check-live", help="Verificar MQTT, WebSocket, historial y CSV con uplinks nuevos")
     check.add_argument("--file", type=Path, default=Path(__file__).resolve().parents[2] / "mission.local.json")
     check.add_argument("--samples", type=int, default=10)
@@ -71,6 +74,12 @@ def main() -> None:
         run_async(server.serve())
     elif args.command == "init-mission":
         run_async(initialize(settings, args.file))
+    elif args.command == "check-identity":
+        from app.bootstrap.identity import check_identity
+        result = run_async(check_identity(settings, args.file, args.firmware))
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        if result["status"] != "matched":
+            raise SystemExit(1)
     else:
         from app.bootstrap.check_live import LiveCheckError, check_live
         report = {}

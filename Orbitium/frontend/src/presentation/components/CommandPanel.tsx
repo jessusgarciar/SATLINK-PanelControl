@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import type { MissionController, MissionState } from '../../application/MissionController.ts'
-import { dataAgeSeconds, latestSample } from '../../domain/mission.ts'
-import { clock, statusLabels } from '../format.ts'
+import { commandUnavailableReason } from '../../domain/mission.ts'
+import type { CommandType } from '../../domain/mission.ts'
+import { clock, duration, statusLabels } from '../format.ts'
 import { Dialog, SectionTitle } from './ui.tsx'
 
 export default function CommandPanel({
@@ -14,20 +15,21 @@ export default function CommandPanel({
   now: number
 }) {
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [startOpen, setStartOpen] = useState(false)
   const [phrase, setPhrase] = useState('')
   const snapshot = state.snapshot!
-  const age = dataAgeSeconds(latestSample(snapshot.telemetry), now)
   const demo = controller.gateway.mode === 'demo'
   const available =
     snapshot.permissions.canCommand &&
     state.connection === 'connected' &&
-    age !== null &&
-    age <= snapshot.mission.staleAfterSeconds &&
     (demo || Boolean(snapshot.csrfToken))
   const hasRelease = snapshot.commands.some(
     (c) => c.type === 'RELEASE_NOW' && !['rejected', 'expired'].includes(c.status),
   )
   const disabled = state.commanding || !available
+  const reason = (type: CommandType) => commandUnavailableReason(snapshot, type, now)
+  const blocked = (type: CommandType) => disabled || Boolean(reason(type))
+  const startPending = snapshot.commands.some((c) => c.type === 'START_MISSION' && ['pending', 'sent', 'received'].includes(c.status))
   return (
     <section className="panel command-panel">
       <div className="section-heading">
@@ -39,37 +41,40 @@ export default function CommandPanel({
       <div className="command-buttons">
         <button
           className="button"
-          disabled={disabled || snapshot.mission.beaconOn === null}
-          onClick={() =>
-            void controller.sendCommand(snapshot.mission.beaconOn ? 'BEACON_OFF' : 'BEACON_ON')
-          }
+          disabled={blocked('START_MISSION')}
+          title={reason('START_MISSION') ?? 'Iniciar misión y watchdog en la Heltec'}
+          onClick={() => setStartOpen(true)}
         >
-          {snapshot.mission.beaconOn ? '● Baliza OFF' : '○ Baliza ON'}
+          {snapshot.mission.startedAt ? 'Misión iniciada' : startPending ? 'Inicio solicitado' : 'Iniciar misión'}
         </button>
         <button
           className="button"
-          disabled={disabled}
+          disabled={blocked('PING')}
+          title={reason('PING') ?? undefined}
           onClick={() => void controller.sendCommand('PING')}
         >
           PING
         </button>
         <button
           className="button"
-          disabled={disabled}
+          disabled={blocked('STATUS')}
+          title={reason('STATUS') ?? undefined}
           onClick={() => void controller.sendCommand('STATUS')}
         >
           STATUS?
         </button>
         <button
           className="button"
-          disabled={disabled}
+          disabled={blocked('TELEMETRY')}
+          title={reason('TELEMETRY') ?? undefined}
           onClick={() => void controller.sendCommand('TELEMETRY')}
         >
           TELEM?
         </button>
         <button
           className="button danger"
-          disabled={disabled || snapshot.mission.phase !== 'ascending' || hasRelease}
+          disabled={blocked('RELEASE_NOW') || snapshot.mission.phase !== 'ascending' || hasRelease}
+          title={reason('RELEASE_NOW') ?? undefined}
           onClick={() => {
             setPhrase('')
             setConfirmOpen(true)
@@ -81,8 +86,9 @@ export default function CommandPanel({
       <p className="helper-text">
         {demo
           ? 'Demostración: estos controles no envían comandos a la cápsula.'
-          : 'Clase A: espera al siguiente uplink. Recibido no significa ejecutado.'}
+          : snapshot.commandSettings?.reason ?? 'Clase A · intervalo de 6 horas: el comando espera al siguiente uplink. Recibido no significa ejecutado.'}
       </p>
+      {!demo && !snapshot.mission.startedAt && <p className="helper-text">El tiempo de misión y el watchdog comienzan únicamente con la ejecución confirmada de START_MISSION por la Heltec.</p>}
       {state.actionError && (
         <div className="inline-error" role="alert">
           {state.actionError}
@@ -116,6 +122,24 @@ export default function CommandPanel({
           </div>
         ))}
       </div>
+      {startOpen && (
+        <Dialog title="Confirmar inicio de misión" onClose={() => setStartOpen(false)}>
+          <div className="dialog-body">
+            <p>{demo ? 'Inicio simulado de misión.' : 'Se solicitará a la Heltec iniciar la misión y su watchdog autónomo.'}</p>
+            <p>
+              Watchdog configurado: {duration(snapshot.mission.watchdogSeconds)}. Solicitarlo o recibir
+              un ACK no inicia los contadores; hace falta confirmar la ejecución. Esta acción no
+              confirma ascenso ni modifica la cadencia de radio.
+            </p>
+            <div className="dialog-actions">
+              <button className="button subtle" onClick={() => setStartOpen(false)}>Cancelar</button>
+              <button className="button" disabled={blocked('START_MISSION')} onClick={async () => {
+                if (await controller.sendCommand('START_MISSION', true)) setStartOpen(false)
+              }}>{state.commanding ? 'Solicitando…' : 'Confirmar inicio'}</button>
+            </div>
+          </div>
+        </Dialog>
+      )}
       {confirmOpen && (
         <Dialog title="Confirmar solicitud de liberación" onClose={() => setConfirmOpen(false)}>
           <div className="dialog-body">

@@ -95,6 +95,9 @@ export function parseMission(value: unknown): Mission {
   return {
     id: str(m.id),
     name: str(m.name),
+    applicationId: m.applicationId == null ? null : str(m.applicationId),
+    applicationName: m.applicationName == null ? null : str(m.applicationName),
+    plannedLaunchAt: optionalTimestamp(m.plannedLaunchAt),
     updatedAt: timestamp(m.updatedAt),
     startedAt: optionalTimestamp(m.startedAt),
     endedAt: optionalTimestamp(m.endedAt),
@@ -111,7 +114,7 @@ export function parseMission(value: unknown): Mission {
     nominalAscentMs: between(m.nominalAscentMs, 1, 10),
     nominalDescentMs: between(m.nominalDescentMs, 1, 15),
     watchdogSeconds: between(m.watchdogSeconds, 1, 86400),
-    staleAfterSeconds: between(m.staleAfterSeconds, 1, 3600),
+    staleAfterSeconds: between(m.staleAfterSeconds, 1, 86400),
     deviceEui: str(m.deviceEui),
     region: str(m.region),
     beaconOn: m.beaconOn === null ? null : bool(m.beaconOn),
@@ -165,8 +168,7 @@ export function parseCommand(value: unknown): Command {
       'PING',
       'STATUS',
       'TELEMETRY',
-      'BEACON_ON',
-      'BEACON_OFF',
+      'START_MISSION',
       'RELEASE_NOW',
     ]),
     status: oneOf<CommandStatus>(c.status, [
@@ -252,6 +254,7 @@ export function parseSnapshot(value: unknown, missionId: string): DashboardSnaps
   const events = array(s.events, parseEvent)
   const prediction = s.prediction === null ? null : parsePrediction(s.prediction)
   const settings = s.predictionSettings == null ? null : record(s.predictionSettings)
+  const commandSettings = s.commandSettings == null ? null : record(s.commandSettings)
   if (
     [...telemetry, ...commands, ...events, ...(prediction ? [prediction] : [])].some(
       (item) => item.missionId !== missionId,
@@ -260,6 +263,12 @@ export function parseSnapshot(value: unknown, missionId: string): DashboardSnaps
     throw new Error('La respuesta contiene datos de otra misión.')
   return {
     mission,
+    ...(commandSettings === null ? {} : { commandSettings: {
+      enabled: bool(commandSettings.enabled),
+      supportedTypes: array(commandSettings.supportedTypes, (value) => oneOf<CommandType>(value, ['PING', 'STATUS', 'TELEMETRY', 'START_MISSION', 'RELEASE_NOW'])),
+      reason: commandSettings.reason == null ? null : str(commandSettings.reason),
+      uplinkIntervalSeconds: between(commandSettings.uplinkIntervalSeconds, 1, 86400),
+    } }),
     ...(settings === null ? {} : { predictionSettings: {
       enabled: bool(settings.enabled),
       launchAltitudeReference: oneOf(settings.launchAltitudeReference, ['MSL', 'unknown'] as const),

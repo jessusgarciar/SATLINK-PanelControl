@@ -8,6 +8,7 @@ import { Definition, Dialog, PhaseChip, RangeInput, SectionTitle } from './ui.ts
 import PlanningDialog from './PlanningDialog.tsx'
 import MissionIcon from './MissionIcon.tsx'
 import Carousel from './react-bits/Carousel.tsx'
+import InstitutionLogos from './InstitutionLogos.tsx'
 
 const MissionMap = lazy(() => import('./MissionMap.tsx'))
 function localDatetime(value: string): string {
@@ -385,6 +386,7 @@ export default function RecoveryView({
             </section>
           </div>
         </div>
+        <InstitutionLogos />
       </div>
       {planningOpen && <PlanningDialog state={state} controller={controller} parameters={effectiveParameters} settings={settings} now={now}
         onClose={() => setPlanningOpen(false)} onGenerated={p => {

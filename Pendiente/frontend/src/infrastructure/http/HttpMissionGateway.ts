@@ -3,10 +3,11 @@ import type {
   CommandType,
   ConnectionStatus,
   MissionMessage,
+  MissionParameters,
   PredictionParameters,
 } from '../../domain/mission.ts'
 import { subscribeMission } from '../websocket/missionStream.ts'
-import { parseCommand, parsePrediction, parseSnapshot, parseHistory, parseWindow } from './validation.ts'
+import { parseCommand, parsePrediction, parseSnapshot, parseHistory, parseWindow, parseMission } from './validation.ts'
 import type { TimeRange } from '../../domain/history.ts'
 
 export class HttpMissionGateway implements MissionGateway {
@@ -32,6 +33,7 @@ export class HttpMissionGateway implements MissionGateway {
           401: 'Inicia sesión en la estación terrena.',
           403: 'Tu sesión no tiene permiso para esta acción.',
           404: 'La misión o el endpoint todavía no está disponible.',
+          405: 'El servidor no admite esta operación. Comprueba que el backend esté actualizado y la URL sea correcta.',
           409: 'Existe una solicitud incompatible. Revisa la bitácora.',
           429: 'Espera antes de volver a solicitar una predicción.',
           502: 'Tawhiri no entregó una predicción válida. Se conserva la anterior.',
@@ -41,7 +43,7 @@ export class HttpMissionGateway implements MissionGateway {
           ? await response.json().catch(() => null) : null
         const detail = body && typeof body === 'object' && 'detail' in body ? body.detail : null
         throw new Error(
-          (response.status === 422 && typeof detail === 'string' ? detail : null) ??
+          ([409, 422].includes(response.status) && typeof detail === 'string' && detail.trim() ? detail : null) ??
           messages[response.status] ?? 'El servidor respondió con error ' + response.status + '.',
         )
       }
@@ -59,6 +61,15 @@ export class HttpMissionGateway implements MissionGateway {
   }
   async load(signal: AbortSignal) {
     return parseSnapshot(await this.request('/dashboard?limit=1200', { signal }), this.missionId)
+  }
+  async saveParameters(parameters: MissionParameters, csrfToken: string | null) {
+    const mission = parseMission(await this.request('/parameters', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken ?? '' },
+      body: JSON.stringify(parameters),
+    }))
+    if (mission.id !== this.missionId) throw new Error('La respuesta no corresponde a esta misión.')
+    return mission
   }
   private interval(range: TimeRange): URLSearchParams {
     const query = new URLSearchParams({ to: range.to })

@@ -23,6 +23,9 @@ class TelemetryHub:
     async def publish(self, mission_id: str, telemetry: JsonObject) -> None:
         self.send(mission_id, {"type": "telemetry", "data": telemetry})
 
+    async def publish_mission(self, mission_id: str, mission: JsonObject) -> None:
+        self.send(mission_id, {"type": "mission", "data": mission})
+
     async def publish_prediction(self, mission_id: str, prediction: JsonObject) -> None:
         self.send(mission_id, {"type": "prediction", "data": prediction})
 

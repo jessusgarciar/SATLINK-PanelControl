@@ -68,11 +68,13 @@ export function Dialog({
   children,
   onClose,
   className = '',
+  closeDisabled = false,
 }: {
   title: string
   children: ReactNode
   onClose: () => void
   className?: string
+  closeDisabled?: boolean
 }) {
   const ref = useRef<HTMLDialogElement>(null)
   useEffect(() => {
@@ -95,12 +97,12 @@ export function Dialog({
       onCancel={(e) => {
         e.preventDefault()
         e.stopPropagation()
-        onClose()
+        if (!closeDisabled) onClose()
       }}
     >
       <div className="dialog-heading">
         <h2>{title}</h2>
-        <button className="button subtle" onClick={onClose} aria-label="Cerrar diálogo">
+        <button className="button subtle" onClick={onClose} disabled={closeDisabled} aria-label="Cerrar diálogo">
           ✕ Cerrar
         </button>
       </div>

@@ -1,6 +1,5 @@
 import {
-  dataAgeSeconds,
-  latestSample,
+  commandUnavailableReason,
   mergeCommands,
   mergeEvents,
   mergeTelemetry,
@@ -12,6 +11,7 @@ import type {
   ConnectionStatus,
   DashboardSnapshot,
   MissionMessage,
+  MissionParameters,
   PredictionParameters,
 } from '../domain/mission.ts'
 import type { MissionGateway } from './ports.ts'
@@ -51,6 +51,18 @@ export class MissionController {
     this.gateway = gateway
   }
   getSnapshot = (): MissionState => this.state
+  saveParameters = async (parameters: MissionParameters): Promise<void> => {
+    const snapshot = this.state.snapshot
+    const generation = this.generation
+    if (!snapshot) throw new Error('Espera a que la misión esté disponible.')
+    const mission = await this.gateway.saveParameters(parameters, snapshot.csrfToken)
+    if (generation !== this.generation || this.state.snapshot?.mission.id !== mission.id) return
+    const current = this.state.snapshot
+    if (Date.parse(mission.updatedAt) >= Date.parse(current.mission.updatedAt)) {
+      this.update({ snapshot: { ...current, mission } })
+    }
+    this.recordTechnical('Parámetros de misión guardados' + (this.gateway.mode === 'demo' ? ' · simulación' : ' · archivo local y estación'))
+  }
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener)
     return () => {
@@ -208,27 +220,30 @@ export class MissionController {
     if (this.state.technicalLog[0]?.message === message) return
     this.update({ technicalLog: [{ id: ++this.logId, at: new Date().toISOString(), message }, ...this.state.technicalLog].slice(0, 100) })
   }
-  sendCommand = async (type: CommandType, releaseConfirmed = false): Promise<boolean> => {
+  sendCommand = async (type: CommandType, actionConfirmed = false): Promise<boolean> => {
     const s = this.state.snapshot
-    const age = dataAgeSeconds(latestSample(s?.telemetry ?? []), Date.now())
+    const unavailable = s ? commandUnavailableReason(s, type, Date.now()) : null
     if (
       !s ||
       this.state.commanding ||
       !s.permissions.canCommand ||
       this.state.connection !== 'connected' ||
-      age === null ||
-      age > s.mission.staleAfterSeconds ||
+      unavailable !== null ||
       (this.gateway.mode === 'live' && !s.csrfToken)
     ) {
       this.update({
         actionError:
-          'Comando no disponible: verifica conexión, datos recientes y permiso de operador.',
+          unavailable ?? 'Comando no disponible: verifica conexión y permiso de operador.',
       })
+      return false
+    }
+    if (type === 'START_MISSION' && !actionConfirmed) {
+      this.update({ actionError: 'Confirma el inicio de misión y del watchdog en la Heltec.' })
       return false
     }
     if (
       type === 'RELEASE_NOW' &&
-      (!releaseConfirmed ||
+      (!actionConfirmed ||
         s.mission.phase !== 'ascending' ||
         s.commands.some((c) => c.type === type && !['rejected', 'expired'].includes(c.status)))
     ) {

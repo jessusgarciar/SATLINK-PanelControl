@@ -48,3 +48,31 @@ async def test_duplicates_and_unmapped_devices_do_not_publish(make_uplink, missi
     assert await service.execute(*make_uplink()) is None
     publisher.publish.assert_not_awaited()
     store.reject.assert_awaited_once()
+
+
+async def test_chirpstack_application_name_is_published_from_committed_mission(make_uplink, mission_config):
+    store, publisher = AsyncMock(), AsyncMock()
+    original = Mission("test-flight", "test-chirpstack", "test-app", "0102030405060708", mission_config)
+    updated = Mission(original.id, original.source, original.application_id, original.dev_eui,
+                      {**mission_config, "applicationName": "sci-fi", "updatedAt": "2026-10-02T12:00:00Z"})
+    store.find_mission.side_effect = [original, updated]
+    store.persist.return_value = True
+    service = IngestTelemetry(store, publisher, original.source, ChirpStackDecoder(decode_payload))
+    await service.execute(*make_uplink(deviceInfo={"applicationId": "test-app", "devEui": original.dev_eui,
+                                                  "applicationName": "sci-fi"}))
+    publisher.publish_mission.assert_awaited_once()
+    mission = publisher.publish_mission.call_args.args[1]
+    assert mission["applicationName"] == "sci-fi"
+    assert mission["applicationId"] == "test-app"
+
+
+@pytest.mark.parametrize("value", [None, "", "  ", 123, "x" * 257])
+async def test_missing_or_invalid_application_names_do_not_clear_identity(value, make_uplink, mission_config):
+    store, publisher = AsyncMock(), AsyncMock()
+    store.find_mission.return_value = Mission("test-flight", "test-chirpstack", "test-app", "0102030405060708",
+                                             {**mission_config, "applicationName": "sci-fi"})
+    store.persist.return_value = True
+    service = IngestTelemetry(store, publisher, "test-chirpstack", ChirpStackDecoder(decode_payload))
+    await service.execute(*make_uplink(deviceInfo={"applicationId": "test-app", "devEui": "0102030405060708",
+                                                  "applicationName": value}))
+    publisher.publish_mission.assert_not_awaited()

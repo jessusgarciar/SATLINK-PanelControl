@@ -3,11 +3,14 @@ from pydantic import Field, field_validator
 from app.presentation.schemas.uplink import utc_time
 from app.presentation.schemas.base import DTO, Position
 from app.presentation.schemas.prediction import PredictionDTO, PredictionSettingsDTO
+from app.presentation.schemas.commands import CommandDTO, CommandSettingsDTO
 
 
 class MissionConfig(DTO):
     id: Annotated[str, Field(pattern=r"^[a-zA-Z0-9_-]{1,128}$")]
     name: Annotated[str, Field(min_length=1, max_length=256)]
+    applicationName: Annotated[str, Field(min_length=1, max_length=256)] | None = None
+    plannedLaunchAt: str | None = None
     source: Annotated[str, Field(min_length=1, max_length=128)]
     applicationId: Annotated[str, Field(min_length=1, max_length=128, pattern=r"^[^/+#]+$")]
     deviceEui: Annotated[str, Field(pattern=r"^[0-9a-fA-F]{16}$")]
@@ -17,7 +20,7 @@ class MissionConfig(DTO):
     nominalAscentMs: Annotated[float, Field(ge=1, le=10)]
     nominalDescentMs: Annotated[float, Field(ge=1, le=15)]
     watchdogSeconds: Annotated[int, Field(ge=1, le=86400)]
-    staleAfterSeconds: Annotated[int, Field(ge=1, le=3600)]
+    staleAfterSeconds: Annotated[int, Field(ge=1, le=86400)]
     region: Literal["US915"] = "US915"
 
     @field_validator("deviceEui")
@@ -25,10 +28,30 @@ class MissionConfig(DTO):
     def lower_eui(cls, value: str) -> str:
         return value.lower()
 
+    @field_validator("plannedLaunchAt")
+    @classmethod
+    def planned_time(cls, value: str | None) -> str | None:
+        return None if value is None else utc_time(value).isoformat()
+
+
+class MissionParameters(DTO):
+    plannedLaunchAt: str | None
+    launch: Position
+    launchLabel: Annotated[str, Field(min_length=1, max_length=256, pattern=r"\S")]
+    targetRelativeAltitudeM: Annotated[float, Field(ge=1000, le=15000)]
+
+    @field_validator("plannedLaunchAt")
+    @classmethod
+    def planned_time(cls, value: str | None) -> str | None:
+        return None if value is None else utc_time(value).isoformat()
+
 
 class MissionDTO(DTO):
     id: str
     name: str
+    applicationId: str | None = None
+    applicationName: str | None = None
+    plannedLaunchAt: str | None = None
     updatedAt: str
     startedAt: str | None
     endedAt: str | None
@@ -101,14 +124,15 @@ class IngestionDTO(DTO):
 
 
 class Permissions(DTO):
-    canCommand: Literal[False] = False
+    canCommand: bool = False
     canPredict: bool = False
 
 
 class DashboardDTO(DTO):
     mission: MissionDTO
     telemetry: list[TelemetryDTO]
-    commands: Annotated[list, Field(max_length=0)] = Field(default_factory=list)
+    commands: Annotated[list[CommandDTO], Field(max_length=100)] = Field(default_factory=list)
+    commandSettings: CommandSettingsDTO = Field(default_factory=CommandSettingsDTO)
     events: Annotated[list, Field(max_length=0)] = Field(default_factory=list)
     prediction: "PredictionDTO | None" = None
     permissions: Permissions = Field(default_factory=Permissions)

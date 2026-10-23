@@ -38,6 +38,9 @@ export interface Position {
 export interface Mission {
   id: string
   name: string
+  applicationId?: string | null
+  applicationName?: string | null
+  plannedLaunchAt?: string | null
   updatedAt: string
   startedAt: string | null
   endedAt: string | null
@@ -52,6 +55,12 @@ export interface Mission {
   deviceEui: string
   region: string
   beaconOn: boolean | null
+}
+export interface MissionParameters {
+  plannedLaunchAt: string | null
+  launch: Position
+  launchLabel: string
+  targetRelativeAltitudeM: number
 }
 export interface Telemetry {
   id: string

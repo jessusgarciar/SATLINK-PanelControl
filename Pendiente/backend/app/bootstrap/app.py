@@ -1,6 +1,7 @@
 import asyncio
 import secrets
 import math
+from pathlib import Path
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager, contextmanager, suppress
 from typing import Annotated, AsyncIterator, Iterator
@@ -11,14 +12,15 @@ from app.application.use_cases.ingestion_state import IngestionState
 from app.application.use_cases.query_telemetry import QueryTelemetry
 from app.bootstrap.config import Settings
 from app.bootstrap.demo import DEMO_MISSION
-from app.domain.entities.telemetry import MissionNotFound
+from app.domain.entities.telemetry import MissionNotFound, ConfigurationConflict
 from app.domain.entities.telemetry import JsonObject
 from app.infrastructure.database.store import PostgresStore
 from app.infrastructure.mqtt.consumer import consume
 from app.infrastructure.mqtt.picaro import decode_payload
 from app.presentation.api.local import LocalOnlyMiddleware
 from app.presentation.api.streaming import CsvStreamingResponse
-from app.presentation.schemas.api import DashboardDTO, HistoryDTO, WindowDTO
+from app.presentation.schemas.api import DashboardDTO, HistoryDTO, WindowDTO, MissionDTO, MissionParameters
+from app.infrastructure.mission_settings import MissionSettings
 from app.presentation.schemas.uplink import ChirpStackDecoder, utc_time
 from app.presentation.websocket.hub import TelemetryHub
 from app.application.ports.prediction import PredictionProvider
@@ -31,7 +33,7 @@ from app.presentation.schemas.prediction import PredictionDTO, PredictionRequest
 def create_app(settings: Settings, store: PostgresStore | None = None,
                publisher: TelemetryHub | None = None, *,
                prediction_provider: PredictionProvider | None = None,
-               mqtt_topic: str | None = None) -> FastAPI:
+               mqtt_topic: str | None = None, mission_path: Path | None = None) -> FastAPI:
     if settings.mqtt_enabled and not mqtt_topic:
         raise ValueError("El topic MQTT de la misión es obligatorio cuando MQTT está habilitado")
     repository = store if store is not None else PostgresStore(settings.database_url)
@@ -44,6 +46,7 @@ def create_app(settings: Settings, store: PostgresStore | None = None,
         provider = TawhiriProvider(settings.prediction_url)
     predictor = None if provider is None else PredictMission(repository, provider, hub)
     csrf_token = secrets.token_urlsafe(32)
+    mission_settings = MissionSettings(repository, mission_path or Path(__file__).resolve().parents[2] / "mission.local.json")
 
     def source_of(snapshot: dict) -> str:
         metadata = snapshot.get("ingestion") or {}
@@ -96,6 +99,7 @@ def create_app(settings: Settings, store: PostgresStore | None = None,
     async def dashboard(mission_id: str, limit: Annotated[int, Query(ge=1, le=1200)] = 1200) -> dict:
         try:
             snapshot = await repository.dashboard(mission_id, limit)
+            snapshot["mission"] = await mission_settings.populate_application_name(snapshot["mission"])
             snapshot["ingestion"] = ingestion.snapshot(source_of(snapshot))
             references = settings.prediction_references.get(mission_id, {})
             # Una misión sin datum oficial aún puede planear desde un origen manual MSL.
@@ -105,7 +109,7 @@ def create_app(settings: Settings, store: PostgresStore | None = None,
                 snapshot["prediction"] = await repository.latest_prediction(mission_id)
                 next_allowed = await repository.prediction_next_allowed_at(mission_id)
             snapshot["permissions"] = {"canCommand": False, "canPredict": can_predict}
-            snapshot["csrfToken"] = csrf_token if can_predict else None
+            snapshot["csrfToken"] = csrf_token
             snapshot["predictionSettings"] = {"enabled": settings.prediction_enabled,
                 "launchAltitudeReference": references.get("launchAltitudeReference", "unknown"),
                 "gpsAltitudeReference": references.get("gpsAltitudeReference", "unknown"),
@@ -113,6 +117,23 @@ def create_app(settings: Settings, store: PostgresStore | None = None,
             return snapshot
         except MissionNotFound as exc:
             raise HTTPException(404, "Misión inexistente") from exc
+
+    @app.put("/api/v1/missions/{mission_id}/parameters", response_model=MissionDTO)
+    async def update_parameters(mission_id: str, payload: MissionParameters, request: Request) -> dict:
+        token = request.headers.get("X-CSRF-Token", "")
+        if (request.headers.get("Origin") not in settings.allowed_origins or
+                not secrets.compare_digest(token.encode("utf-8"), csrf_token.encode("ascii"))):
+            raise HTTPException(403, "Origen o token inválidos")
+        try:
+            mission = await mission_settings.update(mission_id, payload)
+        except MissionNotFound as exc:
+            raise HTTPException(404, "Misión inexistente") from exc
+        except ConfigurationConflict as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except (OSError, ValueError) as exc:
+            raise HTTPException(503, "No se pudo guardar la configuración local de la misión") from exc
+        hub.send(mission_id, {"type": "mission", "data": mission})
+        return mission
 
     @app.post("/api/v1/missions/{mission_id}/predictions", response_model=PredictionDTO)
     async def predict(mission_id: str, payload: PredictionRequest, request: Request) -> dict:

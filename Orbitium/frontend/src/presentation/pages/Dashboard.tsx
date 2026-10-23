@@ -15,6 +15,7 @@ import MissionHeader from '../components/MissionHeader.tsx'
 import MissionSummary from '../components/MissionSummary.tsx'
 import MissionDetails from '../components/MissionDetails.tsx'
 import MissionLog from '../components/MissionLog.tsx'
+import InstitutionLogos from '../components/InstitutionLogos.tsx'
 
 const MissionMap = lazy(() => import('../components/MissionMap.tsx'))
 const TelemetryCharts = lazy(() => import('../components/TelemetryCharts.tsx'))
@@ -62,7 +63,7 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
       <a className="skip-link" href="#mission-dashboard">
         Saltar al panel de telemetría
       </a>
-      <MissionHeader mission={mission} elapsed={elapsed} mode={controller.gateway.mode} onModeChange={onModeChange} />
+      <MissionHeader mission={mission} elapsed={elapsed} mode={controller.gateway.mode} onModeChange={onModeChange} deviceOnline={!stale && state.connection === 'connected' && snapshot?.ingestion?.status === 'connected'} mapSettings={mapSettings} onSaveParameters={controller.saveParameters} />
       <main id="mission-dashboard" className="dashboard-shell">
         <div
           className={
@@ -136,15 +137,15 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
             <MissionSummary mission={mission} readings={readings} progress={progress} stale={readingStale('relativeAltitudeM')} observedAt={observedAt.relativeAltitudeM} />
             <section className="metrics-primary" aria-label="Estado de la misión">
               <DataCard
-                label="Tiempo de vuelo"
+                label="Tiempo de misión"
                 value={duration(elapsed)}
-                detail={mission.endedAt ? 'Misión finalizada' : 'Desde el lanzamiento'}
+                detail={mission.endedAt ? 'Misión finalizada' : mission.startedAt ? 'Desde el inicio confirmado' : 'Pendiente de iniciar misión'}
                 tone="cyan"
               />
               <DataCard
                 label="Watchdog"
                 value={elapsed === null ? '—' : duration(mission.watchdogSeconds - elapsed)}
-                detail="Referencia · timer en firmware"
+                detail={mission.startedAt ? 'Referencia · timer autónomo en Heltec' : 'Pendiente de inicio confirmado'}
                 tone="amber"
               />
               <DataCard
@@ -263,6 +264,7 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
               <span>
                 {demo ? 'SIMULACIÓN' : mission.deviceEui} · LoRaWAN {mission.region} · ChirpStack
               </span>
+              <InstitutionLogos />
             </footer>
             {recoveryOpen && (
               <Suspense

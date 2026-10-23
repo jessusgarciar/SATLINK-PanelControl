@@ -80,30 +80,25 @@ async def test_database_rollback_removes_event_and_never_publishes(store, make_u
         assert await session.scalar(select(func.count()).select_from(TelemetryRow)) == 0
 
 
-async def test_mission_initialization_is_idempotent_and_origin_immutable(store, mission_config):
+async def test_mission_initialization_only_updates_stale_threshold_and_preserves_telemetry(
+        store, mission_config, make_uplink):
     first = await store.initialize_mission(mission_config)
     second = await store.initialize_mission(mission_config)
     assert first == second
-    changed = {**mission_config, "launch": {**mission_config["launch"], "altitudeM": 2000}}
+    saved = await ingestion(store).execute(*make_uplink())
+    updated_config = {**mission_config, "staleAfterSeconds": 360}
+    updated = await store.initialize_mission(updated_config)
+    dashboard = await store.dashboard("test-flight")
+    assert updated["staleAfterSeconds"] == dashboard["mission"]["staleAfterSeconds"] == 360
+    assert [sample["id"] for sample in dashboard["telemetry"]] == [saved["id"]]
+    assert await store.initialize_mission(updated_config) == updated
+
+    changed = {**updated_config, "launch": {**updated_config["launch"], "altitudeM": 2000}}
     with pytest.raises(ConfigurationConflict):
         await store.initialize_mission(changed)
     assert (await store.dashboard("test-flight"))["mission"]["launch"]["altitudeM"] == 1870
     with pytest.raises(ConfigurationConflict):
         await store.initialize_mission({**mission_config, "id": "other-flight"})
-
-
-async def test_staleness_can_change_without_replacing_identity_origin_or_telemetry(store, mission_config, make_uplink):
-    sample = await ingestion(store).execute(*make_uplink())
-    updated = await store.initialize_mission({**mission_config, "staleAfterSeconds": 300})
-    assert updated["staleAfterSeconds"] == 300
-    assert updated["launch"] == mission_config["launch"]
-    assert updated["deviceEui"] == mission_config["deviceEui"]
-    assert (await store.dashboard(mission_config["id"]))["telemetry"] == [sample]
-    assert await store.initialize_mission({**mission_config, "staleAfterSeconds": 300}) == updated
-    with pytest.raises(ConfigurationConflict):
-        await store.initialize_mission({**mission_config, "staleAfterSeconds": 400,
-                                       "applicationId": "different-app"})
-    assert (await store.dashboard(mission_config["id"]))["mission"]["staleAfterSeconds"] == 300
 
 
 async def test_history_over_1200_order_filters_scope_and_pagination(store, mission_config, make_uplink):

@@ -5,6 +5,7 @@ import type {
   ConnectionStatus,
   DashboardSnapshot,
   MissionMessage,
+  MissionParameters,
   Prediction,
   PredictionParameters,
   Telemetry,
@@ -35,6 +36,9 @@ export class DemoMissionGateway implements MissionGateway {
       mission: {
         id: 'satlink-demo',
         name: 'system · Misión de demostración',
+        applicationName: 'system · Demostración',
+        applicationId: 'aplicacion-simulada',
+        plannedLaunchAt: null,
         updatedAt: startedAt,
         startedAt,
         endedAt: null,
@@ -70,6 +74,11 @@ export class DemoMissionGateway implements MissionGateway {
       descentWindDirection: 120,
       descentWindMs: 5,
     }
+  }
+  async saveParameters(parameters: MissionParameters) {
+    this.data = { ...this.data, mission: { ...this.data.mission, ...parameters, updatedAt: new Date().toISOString() } }
+    this.emit({ type: 'mission', data: this.data.mission })
+    return structuredClone(this.data.mission)
   }
   private sample(seconds: number): Telemetry {
     const launch = this.data.mission.launch

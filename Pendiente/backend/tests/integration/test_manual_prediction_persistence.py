@@ -21,6 +21,8 @@ async def test_manual_planning_survives_restart_without_rewriting_mission_origin
             "launchDatetime": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
             "targetRelativeAltitudeM": 15000.0, "ascentRateMs": 5.0, "descentRateMs": 6.5}
     before = deepcopy((await store.dashboard("test-flight"))["mission"])
+    async with store.sessions() as session:
+        persisted_before = deepcopy((await session.get(MissionRow, "test-flight")).snapshot)
     provider = AsyncMock()
     def response(request):
         start = datetime.fromisoformat(request["launch_datetime"].replace("Z", "+00:00"))
@@ -50,7 +52,7 @@ async def test_manual_planning_survives_restart_without_rewriting_mission_origin
     async with store.sessions() as session:
         row = await session.get(MissionRow, "test-flight")
         assert row.configuration["launch"] == before["launch"]
-        assert row.snapshot == before
+        assert row.snapshot == persisted_before
     restarted = PostgresStore(db_url)
     try:
         snapshot = await restarted.dashboard("test-flight")

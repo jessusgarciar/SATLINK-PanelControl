@@ -15,6 +15,7 @@ El backend implementa telemetría e historial: validación del payload de 19 byt
 Cuenta con diagnóstico MQTT independiente del WebSocket, metadatos de dispositivo y radio, ventanas temporales, CSV completo, reproducción histórica a 1×/5×/10× y una bitácora técnica de sesión. El historial conserva sus fechas originales y queda separado del modo en vivo. 
 
 - [Guía del frontend](frontend/README.md): ejecución, configuración y recorrido de la interfaz.
+- [Comandos e inicio de misión](docs/features/commands.md): solicitudes persistidas, perfil MQTT configurable y firmware pendiente. Baliza fue reemplazada por **Iniciar misión**. La [misión Heltec seleccionada](docs/setup/orbitium.md) es `orbitium-original`; `orbitium` conserva las pruebas del LilyGO. El intervalo previsto es seis horas.
 - [Arquitectura y decisiones de Figma](docs/architecture/frontend.md).
 - [Planificación independiente](docs/features/prediction-planning.md): origen manual, fecha/hora, altitud MSL y verificación del popup de Recuperación.
 - [Entrega, validación y subida a GitHub](docs/frontend-delivery.md).

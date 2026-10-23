@@ -2,6 +2,7 @@ import base64
 import binascii
 import json
 import re
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from collections.abc import AsyncIterator
 from uuid import UUID, uuid4
@@ -11,8 +12,9 @@ from anyio import CancelScope
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from app.domain.entities.telemetry import ConfigurationConflict, IncomingUplink, JsonObject, Mission, MissionNotFound
-from app.infrastructure.database.models import MissionRow, ReceivedEventRow, TelemetryRow, PredictionAttemptRow
+from app.domain.entities.telemetry import ConfigurationConflict, IncomingUplink, JsonObject, Mission, MissionNotFound, observed_application_name
+from app.infrastructure.database.models import MissionRow, ReceivedEventRow, TelemetryRow, PredictionAttemptRow, CommandRow
+from app.domain.entities.commands import CommandConflict, COMMAND_TYPES
 from app.domain.entities.prediction import PredictionCooldown
 from app.infrastructure.mqtt.metadata import enrich_telemetry
 from app.application.use_cases.query_telemetry import interval
@@ -87,6 +89,16 @@ class PostgresStore:
     async def close(self) -> None:
         await self.engine.dispose()
 
+    @asynccontextmanager
+    async def edit_mission(self, mission_id: str) -> AsyncIterator[tuple[JsonObject, JsonObject]]:
+        async with self.sessions.begin() as session:
+            row = await session.scalar(select(MissionRow).where(MissionRow.id == mission_id).with_for_update())
+            if row is None:
+                raise MissionNotFound(mission_id)
+            configuration, snapshot = dict(row.configuration), dict(row.snapshot)
+            yield configuration, snapshot
+            row.configuration, row.snapshot = configuration, snapshot
+
     async def initialize_mission(self, config: JsonObject) -> JsonObject:
         snapshot = {k: v for k, v in config.items() if k not in ("source", "applicationId")}
         snapshot.update(updatedAt=datetime.now(timezone.utc).isoformat(), startedAt=None,
@@ -103,13 +115,19 @@ class PostgresStore:
                 if row.configuration != config:
                     previous = dict(row.configuration)
                     requested = dict(config)
-                    previous_staleness = previous.pop("staleAfterSeconds", None)
+                    for key in ("applicationName", "plannedLaunchAt"):
+                        previous.setdefault(key, None)
+                        requested.setdefault(key, None)
+                    previous.pop("applicationName", None)
+                    requested.pop("applicationName", None)
+                    previous.pop("staleAfterSeconds", None)
                     requested_staleness = requested.pop("staleAfterSeconds", None)
-                    if previous != requested or previous_staleness == requested_staleness:
+                    if previous != requested:
                         raise ConfigurationConflict(
                             "La misión existe con otra configuración; no se modificó su origen")
                     row.configuration = config
                     row.snapshot = {**row.snapshot, "staleAfterSeconds": requested_staleness,
+                                    "applicationName": config.get("applicationName"),
                                     "updatedAt": datetime.now(timezone.utc).isoformat()}
                 return row.snapshot
         except IntegrityError as exc:
@@ -134,7 +152,17 @@ class PostgresStore:
             if inserted is None:
                 return False
             session.add(TelemetryRow(id=telemetry["id"], mission_id=mission.id,
-                                     received_at=event.received_at, data=telemetry))
+                                      received_at=event.received_at, data=telemetry))
+            name = observed_application_name(event.raw_event)
+            if name and mission.snapshot.get("applicationName") != name:
+                row = await session.scalar(select(MissionRow).where(MissionRow.id == mission.id).with_for_update())
+                if row is not None and row.snapshot.get("applicationName") != name:
+                    latest = await session.scalar(select(func.max(TelemetryRow.received_at)).where(
+                        TelemetryRow.mission_id == mission.id))
+                    if latest is None or event.received_at >= latest:
+                        row.configuration = {**row.configuration, "applicationName": name}
+                        row.snapshot = {**row.snapshot, "applicationName": name,
+                                        "updatedAt": datetime.now(timezone.utc).isoformat()}
         return True
 
     async def reject(self, source: str, topic: str, payload: bytes, reason: str) -> None:
@@ -156,18 +184,90 @@ class PostgresStore:
             rows = (await session.execute(filtered_rows(mission_id, None, None).order_by(
                 TelemetryRow.received_at.desc(), TelemetryRow.id.desc()).limit(limit))).all()
             samples = [enrich_telemetry(data, details) for data, details, _ in rows]
+            observed_name = next((name for _, details, _ in rows
+                                  if isinstance(details, dict) and isinstance(details.get("event"), dict)
+                                  and (name := observed_application_name(details["event"]))), None)
             prediction = await session.scalar(select(PredictionAttemptRow.normalized).where(
                 PredictionAttemptRow.mission_id == mission_id, PredictionAttemptRow.status == "succeeded"
             ).order_by(PredictionAttemptRow.requested_at.desc(), PredictionAttemptRow.id.desc()).limit(1))
             next_allowed = await session.scalar(select(func.max(PredictionAttemptRow.next_allowed_at)).where(
                 PredictionAttemptRow.mission_id == mission_id))
-            return {"mission": mission.snapshot, "telemetry": list(reversed(samples)),
-                    "commands": [], "events": [], "prediction": prediction,
+            commands = (await session.scalars(select(CommandRow.data).where(CommandRow.mission_id == mission_id)
+                .order_by(CommandRow.created_at.desc(), CommandRow.id.desc()).limit(100))).all()
+            return {"mission": {**mission.snapshot, "applicationId": mission.application_id,
+                                "applicationName": mission.snapshot.get("applicationName") or observed_name or mission.configuration.get("applicationName"),
+                                "plannedLaunchAt": mission.configuration.get("plannedLaunchAt")}, "telemetry": list(reversed(samples)),
+                    "commands": list(commands), "events": [], "prediction": prediction,
                     "permissions": {"canCommand": False, "canPredict": False}, "csrfToken": None,
                     "predictionSettings": {"enabled": False, "launchAltitudeReference": "unknown",
                                            "gpsAltitudeReference": "unknown", "nextAllowedAt": iso(next_allowed)},
                     "ingestion": {"source": mission.source, "status": "disabled",
                                   "updatedAt": datetime.now(timezone.utc).isoformat()}}
+
+    async def reserve_command(self, mission_id: str, request_id: str, kind: str,
+                              now: datetime) -> tuple[JsonObject, bool]:
+        if kind not in COMMAND_TYPES:
+            raise CommandConflict("Tipo de comando no implementado")
+        async with self.sessions.begin() as session:
+            mission = await session.scalar(select(MissionRow).where(MissionRow.id == mission_id).with_for_update())
+            if mission is None:
+                raise MissionNotFound(mission_id)
+            previous = await session.scalar(select(CommandRow).where(
+                CommandRow.mission_id == mission_id, CommandRow.client_request_id == request_id))
+            if previous is not None:
+                if previous.kind != kind:
+                    raise CommandConflict("Idempotency-Key ya utilizada para otro comando")
+                return previous.data, False
+            if kind == "START_MISSION" and mission.snapshot.get("startedAt"):
+                raise CommandConflict("La misión ya está iniciada; no se reinició el watchdog")
+            active = await session.scalar(select(CommandRow.id).where(CommandRow.mission_id == mission_id,
+                CommandRow.kind == kind, CommandRow.status.in_(("pending", "sent", "received"))).limit(1))
+            if active:
+                raise CommandConflict("Ya existe una solicitud activa de este comando; revisar bitácora")
+            latest = await session.scalar(select(func.max(TelemetryRow.received_at)).where(TelemetryRow.mission_id == mission_id))
+            # PING/STATUS/TELEM permiten diagnosticar aun sin muestras. El inicio requiere datos recientes.
+            if kind == "START_MISSION" and (latest is None or not -5 <= (now - latest).total_seconds() <= mission.snapshot["staleAfterSeconds"]):
+                raise CommandConflict("Iniciar misión requiere telemetría reciente de esta Heltec")
+            identifier = str(uuid4())
+            data = {"id": identifier, "missionId": mission_id, "clientRequestId": request_id, "type": kind,
+                    "status": "pending", "createdAt": iso(now), "updatedAt": iso(now),
+                    "evidence": "Solicitud persistida; todavía no confirma recepción ni ejecución.", "simulated": False,
+                    "watchdogSeconds": mission.snapshot["watchdogSeconds"]}
+            session.add(CommandRow(id=identifier, mission_id=mission_id, client_request_id=request_id,
+                kind=kind, status="pending", created_at=now, data=data))
+        return data, True
+
+    async def command_evidence(self, mission_id: str, command_id: str, status: str,
+                               evidence: str, *, started_at: datetime | None = None) -> tuple[JsonObject, JsonObject | None]:
+        ranks = {"pending": 0, "sent": 1, "received": 2, "executed": 3, "rejected": 3, "expired": 3}
+        if status not in ranks or not evidence.strip():
+            raise CommandConflict("Estado o evidencia inválidos")
+        updated_mission = None
+        async with self.sessions.begin() as session:
+            mission = await session.scalar(select(MissionRow).where(MissionRow.id == mission_id).with_for_update())
+            if mission is None:
+                raise MissionNotFound(mission_id)
+            row = await session.scalar(select(CommandRow).where(CommandRow.id == command_id,
+                CommandRow.mission_id == mission_id).with_for_update())
+            if row is None:
+                raise CommandConflict("Comando inexistente para esta misión")
+            if ranks[row.status] == 3 or ranks[status] < ranks[row.status]:
+                return row.data, None
+            now = datetime.now(timezone.utc)
+            if row.kind == "START_MISSION" and status == "executed":
+                if (started_at is None or started_at.tzinfo is None or
+                        started_at < row.created_at or started_at > now + timedelta(seconds=5)):
+                    raise CommandConflict("El inicio requiere fecha válida de ejecución confirmada por firmware")
+                if mission.snapshot.get("startedAt"):
+                    raise CommandConflict("La misión ya tiene un inicio confirmado")
+                mission.snapshot = {**mission.snapshot, "startedAt": iso(started_at), "updatedAt": iso(now)}
+                updated_mission = {**mission.snapshot, "applicationId": mission.application_id}
+            elif started_at is not None:
+                raise CommandConflict("Solo la ejecución de START_MISSION puede fijar el inicio")
+            row.status = status
+            row.data = {**row.data, "status": status, "evidence": evidence[:2048], "updatedAt": iso(now)}
+            data = row.data
+        return data, updated_mission
 
     async def prediction_context(self, mission_id: str) -> JsonObject:
         snapshot = await self.dashboard(mission_id, 1)

@@ -4,8 +4,7 @@ export type CommandType =
   | 'PING'
   | 'STATUS'
   | 'TELEMETRY'
-  | 'BEACON_ON'
-  | 'BEACON_OFF'
+  | 'START_MISSION'
   | 'RELEASE_NOW'
 export type CommandStatus = 'pending' | 'sent' | 'received' | 'executed' | 'rejected' | 'expired'
 export type ConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'offline'
@@ -38,6 +37,9 @@ export interface Position {
 export interface Mission {
   id: string
   name: string
+  applicationId?: string | null
+  applicationName?: string | null
+  plannedLaunchAt?: string | null
   updatedAt: string
   startedAt: string | null
   endedAt: string | null
@@ -52,6 +54,12 @@ export interface Mission {
   deviceEui: string
   region: string
   beaconOn: boolean | null
+}
+export interface MissionParameters {
+  plannedLaunchAt: string | null
+  launch: Position
+  launchLabel: string
+  targetRelativeAltitudeM: number
 }
 export interface Telemetry {
   id: string
@@ -127,6 +135,12 @@ export interface MissionEvent {
   position: Position | null
 }
 export interface DashboardSnapshot {
+  commandSettings?: {
+    enabled: boolean
+    supportedTypes: CommandType[]
+    reason: string | null
+    uplinkIntervalSeconds: number
+  }
   predictionError?: string | null
   predictionSettings?: {
     enabled: boolean
@@ -153,6 +167,21 @@ export type MissionMessage =
 
 export const MAX_TELEMETRY = 1200
 export const MAX_TARGET_RELATIVE_ALTITUDE_M = 15000
+
+export function commandUnavailableReason(snapshot: DashboardSnapshot, type: CommandType, now: number): string | null {
+  if (!snapshot.permissions.canCommand || snapshot.commandSettings?.enabled === false)
+    return snapshot.commandSettings?.reason ?? 'Sin permiso para enviar comandos.'
+  if (snapshot.commandSettings && !snapshot.commandSettings.supportedTypes.includes(type))
+    return 'Este comando aún no está implementado en el firmware.'
+  if (snapshot.commands.some((c) => c.type === type && ['pending', 'sent', 'received'].includes(c.status)))
+    return 'Ya existe una solicitud pendiente; revisa la bitácora.'
+  if (type === 'START_MISSION' && snapshot.mission.startedAt) return 'La misión ya está iniciada.'
+  if (type === 'START_MISSION' || type === 'RELEASE_NOW') {
+    const age = dataAgeSeconds(latestSample(snapshot.telemetry), now)
+    if (age === null || age > snapshot.mission.staleAfterSeconds) return 'Esta acción requiere telemetría reciente.'
+  }
+  return null
+}
 export function mergeTelemetry(
   current: Telemetry[],
   incoming: Telemetry[],

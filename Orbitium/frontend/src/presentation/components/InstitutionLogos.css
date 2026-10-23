@@ -1,0 +1,42 @@
+.institution-logos {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  width: 100%;
+  min-width: 0;
+  margin-top: 16px;
+  padding: 20px 0 8px;
+  border-top: 1px solid var(--mission-line, var(--border));
+}
+
+.institution-logos > img {
+  display: block;
+  min-width: 0;
+  height: auto;
+  max-height: 72px;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+}
+
+.institution-logos > .institution-logos-pabellon {
+  width: min(33.8%, 156px);
+  max-height: 46.8px;
+  object-position: left center;
+}
+
+.institution-logos > .institution-logos-tecnm {
+  width: min(32.3%, 153px);
+  max-height: 61.2px;
+  object-position: right center;
+}
+
+.orbitium-app .site-footer {
+  flex-wrap: wrap;
+}
+
+.site-footer > .institution-logos {
+  flex-basis: 100%;
+  margin-top: 4px;
+}

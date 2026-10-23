@@ -31,10 +31,6 @@ La **DEMOSTRACIÓN** sigue animando la telemetría y los comandos en el navegado
 
 La ejecución habitual de `npm run dev` conserva el cálculo visual local salvo que se configure `VITE_DEMO_PREDICTION=tawhiri`. Consulta [Demostración con Tawhiri y arranque conjunto](docs/features/demo-tawhiri.md) para configuración, contrato y verificación.
 
-## system: dispositivo pendiente
-
-DevEUI, Application ID, origen de lanzamiento y parámetros físicos siguen pendientes. MQTT está deshabilitado. Completa y valida `backend/mission.local.json` antes de ejecutar `-Mode Live`. Consulta [los pendientes de system](docs/setup/system.md).
-
 ## Requisitos del entorno
 
 - Node.js 22.12 o superior dentro de la rama 22 y npm 10. Entorno verificado: Node.js 22.18.0 y npm 10.9.3.

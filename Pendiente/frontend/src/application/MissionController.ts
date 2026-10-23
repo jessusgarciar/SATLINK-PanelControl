@@ -12,6 +12,7 @@ import type {
   ConnectionStatus,
   DashboardSnapshot,
   MissionMessage,
+  MissionParameters,
   PredictionParameters,
 } from '../domain/mission.ts'
 import type { MissionGateway } from './ports.ts'
@@ -51,6 +52,18 @@ export class MissionController {
     this.gateway = gateway
   }
   getSnapshot = (): MissionState => this.state
+  saveParameters = async (parameters: MissionParameters): Promise<void> => {
+    const snapshot = this.state.snapshot
+    const generation = this.generation
+    if (!snapshot) throw new Error('Espera a que la misión esté disponible.')
+    const mission = await this.gateway.saveParameters(parameters, snapshot.csrfToken)
+    if (generation !== this.generation || this.state.snapshot?.mission.id !== mission.id) return
+    const current = this.state.snapshot
+    if (Date.parse(mission.updatedAt) >= Date.parse(current.mission.updatedAt)) {
+      this.update({ snapshot: { ...current, mission } })
+    }
+    this.recordTechnical('Parámetros de misión guardados' + (this.gateway.mode === 'demo' ? ' · simulación' : ' · archivo local y estación'))
+  }
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener)
     return () => {

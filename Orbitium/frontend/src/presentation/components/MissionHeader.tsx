@@ -1,12 +1,15 @@
 import { lazy, memo, Suspense, useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
-import type { Mission } from '../../domain/mission.ts'
+import type { Mission, MissionParameters } from '../../domain/mission.ts'
 import { duration } from '../format.ts'
 import { useMediaQuery } from '../hooks/useMediaQuery.ts'
 import logo from '../../../../logo.png'
 import CardNav from './react-bits/CardNav.tsx'
 import type { CardNavItem } from './react-bits/CardNav.tsx'
 import { PhaseChip } from './ui.tsx'
+import InstitutionLogos from './InstitutionLogos.tsx'
+import MissionInformation from './MissionInformation.tsx'
+import type { MapSettings } from './MissionMap.tsx'
 
 const Aurora = lazy(() => import('./react-bits/Aurora.tsx'))
 const auroraColors = ['#07304f', '#00c5df', '#124684']
@@ -33,20 +36,28 @@ const HeaderAurora = memo(function HeaderAurora() {
   </div>
 })
 
-export default function MissionHeader({ mission, elapsed, mode, onModeChange }: {
+export default function MissionHeader({ mission, elapsed, mode, onModeChange, deviceOnline, mapSettings, onSaveParameters }: {
   mission: Mission | undefined; elapsed: number | null; mode: 'demo' | 'live'; onModeChange: (mode: 'demo' | 'live') => void
+  deviceOnline: boolean; onSaveParameters: (parameters: MissionParameters) => Promise<void>
+  mapSettings: MapSettings
 }) {
+  const [informationOpen, setInformationOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   return <header className="mission-header">
     <HeaderAurora />
     <div className="mission-header-inner">
       <CardNav className="orbitium-card-nav" style={navStyle} theme="dark" surface="solid" accentColor="#00e5ff" intro={false} openOn="click" cardEffect="fade" stagger={0.04} bounce={0.06} speed={1.3} maxWidth={1280} cardHeight={148} ariaLabel="Navegación de misión" items={menuItems}
+        open={menuOpen} onOpenChange={setMenuOpen}
+        barStart={<button type="button" className="mission-information-trigger" aria-label="Información de misión" aria-haspopup="dialog" onClick={() => { setMenuOpen(false); setInformationOpen(true) }}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v6" strokeLinecap="round" /><circle cx="12" cy="16.5" r=".8" fill="currentColor" stroke="none" /></svg></button>}
         menuHeader={<section className="mission-status-rail" aria-label="Estado y fuente de misión">
           <label className="mission-source"><span>Fuente de datos</span><select value={mode} onChange={e => onModeChange(e.target.value as 'demo' | 'live')}><option value="demo">DEMOSTRACIÓN</option><option value="live">ESTACIÓN REAL</option></select></label>
           {mission ? <PhaseChip phase={mission.phase} /> : <span className="mission-phase-unavailable">Fase no disponible</span>}
           <span className="mission-clock"><span className="sr-only">Tiempo de vuelo: </span>T+ <strong>{duration(elapsed)}</strong></span>
         </section>}
         logo={<span className="mission-brand"><img src={logo} alt="" /><span><span role="heading" aria-level={1} className="mission-brand-name">ORBITIUM</span><small>SATLINK · CONTROL DE MISIÓN</small></span></span>}
+        menuFooter={<InstitutionLogos />}
         logoAlt="Orbitium, ir al resumen" logoHref="#mission-summary" />
     </div>
+    {informationOpen && <MissionInformation key={mode + ':' + (mission?.id ?? '')} mission={mission} demo={mode === 'demo'} online={deviceOnline} mapSettings={mapSettings} onSave={onSaveParameters} onClose={() => setInformationOpen(false)} />}
   </header>
 }

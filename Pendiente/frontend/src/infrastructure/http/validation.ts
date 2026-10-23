@@ -95,6 +95,9 @@ export function parseMission(value: unknown): Mission {
   return {
     id: str(m.id),
     name: str(m.name),
+    applicationId: m.applicationId == null ? null : str(m.applicationId),
+    applicationName: m.applicationName == null ? null : str(m.applicationName),
+    plannedLaunchAt: optionalTimestamp(m.plannedLaunchAt),
     updatedAt: timestamp(m.updatedAt),
     startedAt: optionalTimestamp(m.startedAt),
     endedAt: optionalTimestamp(m.endedAt),

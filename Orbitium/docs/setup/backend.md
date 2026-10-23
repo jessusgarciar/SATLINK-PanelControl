@@ -65,7 +65,7 @@ El arranque mediante la CLI configura el bucle de eventos de Windows necesario p
 
 En `frontend/.env.local`, utiliza la configuración de [la guía del frontend](../../frontend/README.md#conectar-fastapi), con `VITE_MISSION_ID` igual al ID registrado y el proxy dirigido a `http://127.0.0.1:8000`. Reinicia Vite tras cambiar variables.
 
-La estación real muestra telemetría y trayectoria. `canCommand` permanece en `false`; la ruta POST de comandos está fuera de esta entrega. `canPredict` depende de la configuración explícita del predictor. La ausencia de paquetes deja los datos previos visibles con su antigüedad; no activa la demostración.
+La estación real muestra telemetría y trayectoria. El POST de comandos está implementado con persistencia e idempotencia; `canCommand` permanece en `false` hasta disponer de un perfil compatible con el firmware Heltec. Consulta [Comandos e inicio de misión](../features/commands.md). `canPredict` depende de la configuración explícita del predictor. La ausencia de paquetes deja los datos previos visibles con su antigüedad; no activa la demostración.
 
 ## Habilitar predicción local
 

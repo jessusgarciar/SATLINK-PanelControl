@@ -7,6 +7,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 import type { EChartsOption, LineSeriesOption } from 'echarts'
 import type { Telemetry } from '../../domain/mission.ts'
 import { telemetryPoints } from '../readings.ts'
+import { AGS_TIME_LABEL, agsDateTime } from '../missionTime.ts'
 import { SectionTitle } from './ui.tsx'
 
 echarts.use([
@@ -62,51 +63,13 @@ const configs: { title: string; unit: string; series: SeriesConfig[]; secondUnit
     series: [{ key: 'batteryV', label: 'Batería', color: colors.green, area: true }],
   },
 ]
-const chartMetricKeys = [...new Set(configs.flatMap((config) => config.series.map((series) => series.key)))]
-
-function median(values: number[]): number | null {
-  if (values.length === 0) return null
-  const sorted = [...values].sort((a, b) => a - b)
-  const middle = Math.floor(sorted.length / 2)
-  return sorted.length % 2 === 0
-    ? (sorted[middle - 1] + sorted[middle]) / 2
-    : sorted[middle]
-}
-
-function chartInterval(samples: Telemetry[]): number {
-  const times = samples.map((sample) => Date.parse(sample.receivedAt)).filter(Number.isFinite)
-  const span = times.length > 1 ? Math.max(...times) - Math.min(...times) : 0
-  if (span <= 20 * 60_000) return 20_000
-  if (span <= 2 * 60 * 60_000) return 3 * 60_000
-  return 4 * 60_000
-}
-
-function aggregateSamples(samples: Telemetry[], interval: number): Telemetry[] {
-  const buckets = new Map<number, Telemetry[]>()
-  for (const sample of samples) {
-    const time = Date.parse(sample.receivedAt)
-    if (!Number.isFinite(time)) continue
-    const start = Math.floor(time / interval) * interval
-    const bucket = buckets.get(start) ?? []
-    bucket.push(sample)
-    buckets.set(start, bucket)
-  }
-  return [...buckets.entries()].sort(([a], [b]) => a - b).map(([start, bucket]) => {
-    const aggregated: Telemetry = { ...bucket[0], receivedAt: new Date(start).toISOString() }
-    for (const key of chartMetricKeys) {
-      const values = bucket.flatMap((sample) => {
-        const value = sample[key]
-        return typeof value === 'number' && Number.isFinite(value) ? [value] : []
-      })
-      Object.assign(aggregated, { [key]: median(values) })
-    }
-    return aggregated
-  })
-}
-
-function intervalLabel(interval: number): string {
-  return interval < 60_000 ? '20 s' : `${interval / 60_000} min`
-}
+const timeInterval = 10 * 60_000
+const timeLabel = new Intl.DateTimeFormat('es-MX', {
+  timeZone: 'Etc/GMT+6', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+})
+const dateLabel = new Intl.DateTimeFormat('es-MX', {
+  timeZone: 'Etc/GMT+6', day: '2-digit', month: '2-digit',
+})
 
 const Chart = memo(function Chart({
   samples,
@@ -115,19 +78,20 @@ const Chart = memo(function Chart({
   samples: Telemetry[]
   config: (typeof configs)[number]
 }) {
-  const interval = useMemo(() => chartInterval(samples), [samples])
-  const points = useMemo(() => aggregateSamples(samples, interval), [samples, interval])
   const option = useMemo<EChartsOption>(() => {
-    const series: LineSeriesOption[] = config.series.map((s) => ({
+    const times = samples.map(sample => Date.parse(sample.receivedAt)).filter(Number.isFinite)
+    const min = times.length ? Math.floor(Math.min(...times) / timeInterval) * timeInterval : 0
+    const max = times.length ? Math.max(min + timeInterval, Math.ceil(Math.max(...times) / timeInterval) * timeInterval) : timeInterval
+    const series: LineSeriesOption[] = config.series.map((s, index) => ({
       name: s.label,
       type: 'line',
-      showSymbol: false,
-      symbolSize: 4,
+      showSymbol: true,
+      showAllSymbol: true,
+      symbolSize: 5,
       emphasis: { focus: 'series', scale: 1.3 },
       connectNulls: true,
-      sampling: 'lttb',
       yAxisIndex: s.axis ?? 0,
-      lineStyle: { width: 1.6, color: s.color },
+      lineStyle: { width: 1.6, color: s.color, type: index ? 'dashed' : 'solid' },
       itemStyle: { color: s.color },
       areaStyle: s.area
         ? {
@@ -137,7 +101,7 @@ const Chart = memo(function Chart({
             ]),
           }
         : undefined,
-      data: telemetryPoints(points, s.key, s.scale),
+      data: telemetryPoints(samples, s.key, s.scale),
     }))
     const axis = (unit: string) => ({
       type: 'value' as const,
@@ -157,10 +121,9 @@ const Chart = memo(function Chart({
         label: {
           description:
             config.title +
-            '. Resumen por intervalos de ' + intervalLabel(interval) +
-            ', con la mediana de las muestras recibidas. ' +
-            points.length +
-            ' muestras, ordenadas por hora de recepción. Las lecturas actuales están disponibles en las tarjetas de sensores.',
+            '. Escala temporal cada 10 minutos. ' + AGS_TIME_LABEL + '. ' +
+            samples.length +
+            ' muestras con su hora real de recepción. Los puntos son mediciones recibidas; las líneas solo indican tendencia. Las lecturas actuales están disponibles en las tarjetas de sensores.',
         },
       },
       textStyle: { fontFamily: 'JetBrains Mono, monospace' },
@@ -168,7 +131,19 @@ const Chart = memo(function Chart({
       tooltip: {
         trigger: 'axis',
         triggerOn: 'mousemove|click|mousewheel',
-        axisPointer: { type: 'line', lineStyle: { color: '#00e5ff', width: 1 } },
+        confine: true,
+        axisPointer: { type: 'line', snap: true, lineStyle: { color: '#00e5ff', width: 1 } },
+        formatter: (params) => {
+          const items = Array.isArray(params) ? params : [params]
+          const first = items[0]?.value
+          if (!Array.isArray(first) || typeof first[0] !== 'number') return ''
+          return [agsDateTime(new Date(first[0]).toISOString()) + ' · UTC−06:00',
+            ...items.map(item => {
+              const value = Array.isArray(item.value) ? item.value[1] : null
+              return `${item.seriesName}: ${typeof value === 'number' ? value.toFixed(3) : 'No disponible'}`
+            }),
+          ].join('\n')
+        },
         renderMode: 'richText',
         backgroundColor: '#0d1625',
         borderColor: '#235466',
@@ -190,28 +165,35 @@ const Chart = memo(function Chart({
         textStyle: { color: '#92a0b4', fontSize: 9 },
       },
       xAxis: {
-        type: 'time',
+        // ECharts time axes choose calendar ticks automatically; a numeric
+        // timestamp axis enforces exact ten-minute spacing without moving data.
+        type: 'value',
+        min,
+        max,
+        interval: timeInterval,
         axisLine: { lineStyle: { color: '#243044' } },
-        axisTick: { show: false },
+        axisTick: { show: true, lineStyle: { color: '#243044' } },
+        splitLine: { show: true, lineStyle: { color: '#192738', type: 'dashed' } },
         axisLabel: {
           color: '#8091a9',
           fontSize: 9,
           hideOverlap: true,
-          formatter: (v: number) =>
-            new Date(v).toLocaleTimeString('es-MX', { minute: '2-digit', second: '2-digit' }),
+          formatter: (v: number) => {
+            const time = timeLabel.format(v)
+            return time === '00:00' ? `${time}\n${dateLabel.format(v)}` : time
+          },
         },
-        splitNumber: 4,
       },
       yAxis: config.secondUnit
         ? [axis(config.unit), { ...axis(config.secondUnit), splitLine: { show: false } }]
         : axis(config.unit),
       series,
     }
-  }, [points, config, interval])
+  }, [samples, config])
   return (
     <section className="panel chart-panel">
       <SectionTitle>{config.title}</SectionTitle>
-      <p className="chart-hint">Mediana cada {intervalLabel(interval)} · Toca la gráfica para consultar el valor</p>
+      <p className="chart-hint">Toca para ver más detalles</p>
       {config.series.some(s => telemetryPoints(samples, s.key).length > 0) ? (
         <ReactEChartsCore
           echarts={echarts}

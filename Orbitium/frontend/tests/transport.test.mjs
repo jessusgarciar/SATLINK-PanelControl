@@ -52,6 +52,35 @@ test('HTTP rejects HTML responses and unauthorized commands', async (t) => {
   globalThis.fetch = async () => new Response(null, { status: 403 })
   await assert.rejects(gateway.sendCommand('PING', 'r', 'csrf'), /permiso/)
 })
+test('saving parameters shows the conflict detail and distinguishes unsupported methods', async (t) => {
+  const original = globalThis.fetch
+  t.after(() => { globalThis.fetch = original })
+  const gateway = new HttpMissionGateway('/api/v1', 'orbitium')
+  let calls = 0
+  const respond = (status, detail) => {
+    globalThis.fetch = async (url, options) => {
+      calls++
+      assert.equal(url, '/api/v1/missions/orbitium/parameters')
+      assert.equal(options.method, 'PUT')
+      assert.equal(options.headers['X-CSRF-Token'], 'csrf')
+      return new Response(JSON.stringify({ detail }), {
+        status, headers: { 'Content-Type': 'application/json' },
+      })
+    }
+  }
+  respond(409, 'El archivo local no corresponde a la misión activa')
+  await assert.rejects(gateway.saveParameters({}, 'csrf'), {
+    message: 'El archivo local no corresponde a la misión activa',
+  })
+  for (const detail of [null, {}, '   ']) {
+    respond(409, detail)
+    await assert.rejects(gateway.saveParameters({}, 'csrf'), /solicitud incompatible/)
+  }
+  respond(405, 'Method Not Allowed')
+  await assert.rejects(gateway.saveParameters({}, 'csrf'), /servidor no admite esta operación/)
+  assert.equal(calls, 5, 'Failed saves are never retried automatically')
+})
+
 test('WebSocket reconnects, ignores malformed messages and fully cleans up', (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const original = globalThis.WebSocket

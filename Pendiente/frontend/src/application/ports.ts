@@ -4,6 +4,8 @@ import type {
   ConnectionStatus,
   DashboardSnapshot,
   MissionMessage,
+  Mission,
+  MissionParameters,
   Prediction,
   PredictionParameters,
 } from '../domain/mission.ts'
@@ -19,6 +21,7 @@ export interface MissionGateway extends HistoryGateway {
   readonly mode: 'demo' | 'live'
   readonly realPrediction?: boolean
   load(signal: AbortSignal): Promise<DashboardSnapshot>
+  saveParameters(parameters: MissionParameters, csrfToken: string | null): Promise<Mission>
   subscribe(
     onMessage: (message: MissionMessage) => void,
     onStatus: (status: ConnectionStatus) => void,

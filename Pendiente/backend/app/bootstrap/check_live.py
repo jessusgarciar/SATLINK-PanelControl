@@ -59,7 +59,7 @@ def verify_archive(rows: list[dict], streamed: dict[str, dict], observed: dict,
                     "missionId": mission["id"]}
         altitude = expected["altitudeGpsM"]
         expected["relativeAltitudeM"] = None if altitude is None else altitude - mission["launch"]["altitudeM"]
-        expected.update(altitudeBarometricM=None, verticalSpeedMs=None)
+        expected.update(altitudeBarometricM=None, verticalSpeedMs=decoded.measurements.get("verticalSpeedMs"))
         if utc_time(sample["receivedAt"]) != decoded.received_at:
             raise LiveCheckError("La fecha WebSocket difiere del evento MQTT")
         for field, value in expected.items():
@@ -125,7 +125,7 @@ async def check_live(settings: Settings, mission: dict, samples: int = 10,
                 try:
                     event = decoder.decode(str(message.topic), bytes(message.payload), settings.source)
                 except ValueError:
-                    raise LiveCheckError("Uplink incompatible: requiere PICARO FULL (puerto 10, 19 bytes)") from None
+                    raise LiveCheckError("Uplink incompatible: requiere PICARO FULL (puerto 10, 19 bytes) o VUELO (puerto 17, 11 bytes)") from None
                 await queue.put(("mqtt", event))
 
     async def websocket_messages() -> None:

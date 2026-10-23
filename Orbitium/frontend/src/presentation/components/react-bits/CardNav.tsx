@@ -37,8 +37,11 @@ export interface CardNavCta {
 }
 
 export interface CardNavProps {
+  barStart?: ReactNode;
   /** Optional mission controls displayed before the navigation cards. */
   menuHeader?: ReactNode;
+  /** Optional content displayed below the navigation cards. */
+  menuFooter?: ReactNode;
   logo?: string | ReactNode;
   logoAlt?: string;
   logoHref?: string;
@@ -194,7 +197,9 @@ const contrastInk = (color?: string): string | null => {
 };
 
 const CardNav = ({
+  barStart,
   menuHeader,
+  menuFooter,
   logo,
   logoAlt = 'Logo',
   logoHref = '#',
@@ -499,6 +504,12 @@ const CardNav = ({
     >
       <nav ref={panelRef} className={PANEL} aria-label={ariaLabel}>
         <div ref={barRef} className={BAR}>
+          {barStart}
+          {logo && (
+            <LinkComponent href={logoHref} className={LOGO} aria-label={logoAlt}>
+              {typeof logo === 'string' ? <img src={logo} alt="" draggable={false} /> : logo}
+            </LinkComponent>
+          )}
           <button
             ref={menuRef}
             type="button"
@@ -524,12 +535,6 @@ const CardNav = ({
               </span>
             )}
           </button>
-
-          {logo && (
-            <LinkComponent href={logoHref} className={LOGO} aria-label={logoAlt}>
-              {typeof logo === 'string' ? <img src={logo} alt="" draggable={false} /> : logo}
-            </LinkComponent>
-          )}
 
           {cta && !narrow && ctaButton(cta, false)}
         </div>
@@ -579,6 +584,7 @@ const CardNav = ({
               </div>
             ))}
           </div>
+          {menuFooter}
           {cta && narrow && (
             <div
               ref={element => {

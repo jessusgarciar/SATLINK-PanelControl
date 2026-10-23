@@ -26,7 +26,6 @@
 .orbitium-card-nav.card-nav[data-narrow] .card-nav__bar { grid-template-columns: 1fr auto 1fr; }
 .orbitium-card-nav.card-nav[data-narrow] .card-nav__logo { grid-column: 2; justify-self: center; padding-left: 0; }
 .mission-brand { display: flex; align-items: center; gap: 12px; text-align: center; }
-.mission-brand > img { width: 42px !important; height: 38px !important; object-fit: contain; filter: brightness(0) saturate(100%) invert(32%) sepia(87%) saturate(2542%) hue-rotate(216deg) brightness(95%) contrast(93%); }
 .mission-brand-name { display: block; color: var(--cyan); font-size: 23px; font-weight: 700; letter-spacing: 2px; }
 .mission-brand small { display: block; margin-top: 2px; font-size: 9px; color: var(--mission-soft); letter-spacing: 1.2px; }
 .orbitium-card-nav .card-nav__card { border-radius: 4px; box-shadow: inset 0 0 0 1px var(--border); }
@@ -136,8 +135,7 @@
   .orbitium-app button, .orbitium-app [tabindex], .orbitium-app select { scroll-margin-block: 20px; }
   .mission-header-inner { padding: 12px 12px 10px; }
   .mission-brand { flex-direction: column; gap: 2px; }
-  .mission-brand > img { width: 28px !important; height: 25px !important; }
-  .mission-brand-name { font-size: 14px; letter-spacing: .4px; }
+    .mission-brand-name { font-size: 14px; letter-spacing: .4px; }
   .mission-brand small { font-size: 7px; letter-spacing: .5px; margin-top: 0; }
   .orbitium-card-nav .card-nav__menu { font-size: 10px; padding: 0 6px; gap: 5px; }
   .orbitium-card-nav .card-nav__burger { width: 14px; }
@@ -330,4 +328,47 @@
 @media (forced-colors: active) {
   .mission-aurora, .mission-flight-marker { display: none; }
   .mission-summary.panel { background: Canvas; color: CanvasText; border: 1px solid CanvasText; }
+}
+
+/* Mission information and parameter editing, adapted to the light palette. */
+.mission-information-trigger { grid-column: 1; grid-row: 1; justify-self: start; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--mission-line); border-radius: 4px; background: var(--mission-inset); color: var(--cyan); cursor: pointer; transition: background-color .18s, border-color .18s; }
+.mission-information-trigger:hover { background: #dbeafe; border-color: var(--cyan); }
+.mission-information-trigger:active { background: #bfdbfe; }
+.mission-information-trigger:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
+.mission-information.mission-dialog { width: min(760px, calc(100vw - 24px)); height: auto; max-height: calc(100dvh - 24px); margin: auto; border-radius: 4px; }
+.mission-information-body { padding: 20px; }
+.mission-information-identity, .mission-information-parameters { padding: 20px; margin-top: 16px; border: 1px solid var(--mission-line); border-radius: 4px; background: var(--mission-inset); }
+.mission-information-section-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.mission-information-section-title h3 { margin: 0; color: var(--text); font-size: 15px; }
+.mission-information-section-title > span { color: var(--mission-soft); font-size: 9px; letter-spacing: 1px; text-align: right; }
+.mission-information-grid, .mission-information-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 24px; padding: 0; margin: 0; min-width: 0; border: 0; }
+.mission-information-grid dd { overflow-wrap: anywhere; }
+.mission-information-wide { grid-column: 1 / -1; }
+.mission-information-fields input { min-width: 0; width: 100%; color-scheme: light; }
+.mission-information-location { min-width: 0; }
+.mission-information-location h4 { display: flex; align-items: center; gap: 8px; margin: 4px 0 10px; font-size: 15px; color: var(--cyan); }
+.mission-information .mission-information-location .planning-map { width: 100%; height: clamp(260px, 40dvh, 360px); border: 1px solid var(--mission-line); border-radius: 4px; background: var(--mission-inset); }
+.mission-information-location .leaflet-control-zoom a { width: 44px; height: 44px; line-height: 44px; }
+.mission-information-location .helper-text { margin: 10px 0; }
+.mission-map-feedback { margin: 8px 0 0; color: var(--cyan); font-size: 13px; overflow-wrap: anywhere; }
+.mission-map-feedback:empty { display: none; }
+.mission-information-fields input[aria-invalid='true'] { border-color: var(--red, #dc2626); }
+.mission-information-fields input:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
+.mission-information-fields .mission-field-error { color: var(--red, #dc2626); }
+.mission-field-error:empty { display: none; }
+.mission-device-eui { font-family: var(--font-mono, monospace); }
+.mission-device-eui.is-online { color: #15803d; }
+.mission-device-eui.is-offline { color: #b91c1c; }
+.mission-device-eui.is-simulated { color: var(--amber); }
+.mission-device-status { display: block; margin-top: 5px; font-size: 11px; color: var(--mission-soft); }
+.mission-information-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+.mission-information-feedback { color: #15803d; font-size: 12px; margin: 16px 0 0; }
+.mission-information-feedback:empty { margin: 0; }
+@media (max-width: 560px) {
+  .mission-information.mission-dialog { width: 100%; height: 100dvh; max-height: 100dvh; margin: 0; border-radius: 0; }
+  .mission-information-body { padding: 16px 12px max(28px, env(safe-area-inset-bottom)); }
+  .mission-information-identity, .mission-information-parameters { padding: 16px; }
+  .mission-information-grid, .mission-information-fields { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .mission-information .operation-hero h3 { font-size: 25px; }
+  .mission-information-actions .button { flex: 1; }
 }

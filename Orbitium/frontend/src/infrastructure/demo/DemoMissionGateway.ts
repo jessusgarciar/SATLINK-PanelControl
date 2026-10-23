@@ -5,6 +5,7 @@ import type {
   ConnectionStatus,
   DashboardSnapshot,
   MissionMessage,
+  MissionParameters,
   Prediction,
   PredictionParameters,
   Telemetry,
@@ -35,6 +36,9 @@ export class DemoMissionGateway implements MissionGateway {
       mission: {
         id: 'satlink-demo',
         name: 'ORBITIUM · Misión de demostración',
+        applicationName: 'ORBITIUM · Demostración',
+        applicationId: 'aplicacion-simulada',
+        plannedLaunchAt: null,
         updatedAt: startedAt,
         startedAt,
         endedAt: null,
@@ -70,6 +74,11 @@ export class DemoMissionGateway implements MissionGateway {
       descentWindDirection: 120,
       descentWindMs: 5,
     }
+  }
+  async saveParameters(parameters: MissionParameters) {
+    this.data = { ...this.data, mission: { ...this.data.mission, ...parameters, updatedAt: new Date().toISOString() } }
+    this.emit({ type: 'mission', data: this.data.mission })
+    return structuredClone(this.data.mission)
   }
   private sample(seconds: number): Telemetry {
     const launch = this.data.mission.launch
@@ -212,10 +221,10 @@ export class DemoMissionGateway implements MissionGateway {
     )
     this.later(() => {
       advance('executed', 'SIMULADO · respuesta de ejecución del firmware.')
-      if (type === 'BEACON_ON' || type === 'BEACON_OFF') {
+      if (type === 'START_MISSION' && !this.data.mission.startedAt) {
         this.data.mission = {
           ...this.data.mission,
-          beaconOn: type === 'BEACON_ON',
+          startedAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         }
         this.emit({ type: 'mission', data: this.data.mission })

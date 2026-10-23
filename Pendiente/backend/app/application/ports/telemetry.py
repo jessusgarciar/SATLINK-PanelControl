@@ -18,6 +18,7 @@ class TelemetryStore(Protocol):
 
 class TelemetryPublisher(Protocol):
     async def publish(self, mission_id: str, telemetry: JsonObject) -> None: ...
+    async def publish_mission(self, mission_id: str, mission: JsonObject) -> None: ...
 
 
 class IngestionPublisher(Protocol):

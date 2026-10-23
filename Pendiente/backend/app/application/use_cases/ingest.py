@@ -1,7 +1,7 @@
 import logging
 from uuid import uuid4
 from app.application.ports.telemetry import TelemetryPublisher, TelemetryStore, UplinkDecoder
-from app.domain.entities.telemetry import JsonObject
+from app.domain.entities.telemetry import JsonObject, observed_application_name
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +29,17 @@ class IngestTelemetry:
             "receivedAt": event.received_at.isoformat().replace("+00:00", "Z"),
             "frameCounter": event.frame_counter,
             "relativeAltitudeM": None if altitude is None else altitude - mission.snapshot["launch"]["altitudeM"],
-            "altitudeBarometricM": None, "verticalSpeedMs": None,
+            "altitudeBarometricM": None, "verticalSpeedMs": event.measurements.get("verticalSpeedMs"),
         }
         if not await self.store.persist(mission, event, telemetry):
             return None
         try:
             await self.publisher.publish(mission.id, telemetry)
+            name = observed_application_name(event.raw_event)
+            if name and name != mission.snapshot.get("applicationName"):
+                updated = await self.store.find_mission(self.source, event.application_id, event.dev_eui)
+                if updated is not None:
+                    await self.publisher.publish_mission(mission.id, {**updated.snapshot, "applicationId": updated.application_id})
         except Exception:
             # El snapshot y el historial recuperan una emisión fallida tras el commit.
             logger.exception("Telemetría guardada; falló la publicación WebSocket")

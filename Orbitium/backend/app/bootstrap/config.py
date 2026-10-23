@@ -24,6 +24,7 @@ class Settings:
     demo_prediction_enabled: bool = False
     prediction_url: str = "https://api.v2.sondehub.org/tawhiri"
     prediction_references: dict[str, dict[str, str]] = field(default_factory=dict)
+    command_profile_file: str | None = None
 
     def __post_init__(self) -> None:
         predictor = urlsplit(self.prediction_url)
@@ -80,4 +81,5 @@ class Settings:
                    prediction_enabled=flag("SATLINK_PREDICTION_ENABLED"),
                    demo_prediction_enabled=flag("SATLINK_DEMO_PREDICTION_ENABLED"),
                    prediction_url=os.getenv("SATLINK_PREDICTION_URL", "https://api.v2.sondehub.org/tawhiri"),
-                   prediction_references=references, **options)
+                    prediction_references=references,
+                    command_profile_file=os.getenv("SATLINK_COMMAND_PROFILE_FILE") or None, **options)

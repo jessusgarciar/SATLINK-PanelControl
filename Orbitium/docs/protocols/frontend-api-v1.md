@@ -1,6 +1,6 @@
 # Contrato propuesto del panel SATLINK
 
-Estado: snapshot, stream e historial implementados en FastAPI para telemetría PICARO FULL de 19 bytes. La predicción incorpora consultas Tawhiri opcionales y persistencia de la última respuesta válida; consulta [la guía y el estado de verificación](../features/prediction-tawhiri.md). La etapa actual es local, sin login ni telecomandos. Los comandos y la sesión de operador para acceso compartido describen contratos futuros. La verificación con hardware permanece pendiente.
+Estado: snapshot, stream e historial implementados en FastAPI para PICARO FULL y VUELO D-64. La predicción incorpora consultas Tawhiri opcionales y persistencia de la última respuesta válida. La etapa actual es local, sin login compartido. El contrato de solicitudes de comandos y su transporte configurable están implementados; la ejecución requiere ampliar el firmware Heltec. Consulta [Comandos e inicio de misión](../features/commands.md). La verificación con hardware permanece pendiente.
 
 Incorpora estado de ingestión, metadatos de dispositivo/radio, ventana temporal y CSV. La reproducción es una vista de cliente sobre el historial persistido. Consulta [Dashboard y conexión ChirpStack](../features/dashboard-chirpstack.md).
 
@@ -11,7 +11,7 @@ Incorpora estado de ingestión, metadatos de dispositivo/radio, ventana temporal
 - Fetch usa `credentials: include`. Los POST incluyen `X-CSRF-Token`, obtenido del snapshot. El POST local de predicción valida origen, CSRF y configuración de la misión. Para el futuro acceso compartido FastAPI deberá añadir sesión, rol y pertenencia a misión. Ocultar/deshabilitar botones no es autorización.
 - No incluir credenciales de MQTT, PostgreSQL ni ChirpStack en variables `VITE_*`.
 - Fechas RFC3339 con zona horaria explícita, preferentemente UTC `Z`. El panel presenta hora local del navegador y usa la hora de recepción como eje de telemetría.
-- JSON de aplicación. El perfil de radio actual utiliza 19 bytes y fPort 10, descritos en [PICARO FULL v1](picaro-full-v1.md); no se aplica el antiguo borrador compacto de 11 bytes.
+- JSON de aplicación. Se admiten [PICARO FULL de 19 bytes/fPort 10](picaro-full-v1.md) y [VUELO D-64 de 11 bytes/fPort 17](../features/telemetry-vuelo.md). La Heltec seleccionada usa el segundo; no confundirlo con el antiguo borrador compacto de 11 bytes.
 
 ## Operaciones
 
@@ -25,7 +25,7 @@ Incorpora estado de ingestión, metadatos de dispositivo/radio, ventana temporal
 | POST      | `/missions/{id}/commands`             | `Command` registrado, normalmente `pending` |
 | POST      | `/missions/{id}/predictions`          | Última `Prediction` calculada               |
 
-El POST de comandos aún no existe y devuelve 404. El POST de predicción se habilita mediante configuración explícita. El historial acepta `from`, `to` RFC3339 con zona, intervalo `[from,to)`, `cursor` opaco y `limit` de 1–1200 (predeterminado 200). Ordena por `(receivedAt,id)` ascendente y devuelve `nextCursor=null` al terminar. Se deben conservar los filtros entre páginas; cursor malformado o ajeno a los filtros produce 422. El snapshot devuelve las últimas muestras, con límite predeterminado 1200. La adaptación del Ejercicio 10 agrega consulta temporal y reproducción histórica al dashboard.
+El POST de comandos devuelve 202 con la solicitud persistida cuando existe perfil compatible; sin perfil devuelve 503, con origen/token inválidos 403, con cuerpo/cabecera inválidos 422 y con solicitudes incompatibles 409. El POST de predicción se habilita mediante configuración explícita. El historial acepta `from`, `to` RFC3339 con zona, intervalo `[from,to)`, `cursor` opaco y `limit` de 1–1200 (predeterminado 200). Ordena por `(receivedAt,id)` ascendente y devuelve `nextCursor=null` al terminar. Se deben conservar los filtros entre páginas; cursor malformado o ajeno a los filtros produce 422. El snapshot devuelve las últimas muestras, con límite predeterminado 1200.
 
 La ventana y el CSV aceptan `from`/`to` opcionales con el mismo intervalo `[from,to)`. Si `from` falta, el inicio del archivo no se restringe; si `to` falta, se fija a la hora de consulta. La ventana devuelve ese corte temporal, `total` para todas las muestras y las listas reducidas `series` (hasta 600 `Telemetry`) y `track` (hasta 500 `Telemetry` con posición disponible). `from` puede ser `null`. El CSV exporta todas las filas, sin tomar las listas reducidas como fuente, e incluye telemetría, metadatos aplanados `device_*`/`radio_*`, `source`, `applicationId`, `devEui` y `raw_json`. Para exportar el corte mostrado se envían los límites devueltos por la ventana.
 
@@ -120,9 +120,9 @@ El cliente ofrece ventanas de 15 minutos, 1 hora, 6 horas, 24 horas y todo el ar
 { "type": "PING", "clientRequestId": "UUID-generado-por-el-cliente" }
 ```
 
-Además de CSRF se envía `Idempotency-Key` con el mismo UUID. El backend debe imponer unicidad por misión/operador/ID y devolver el mismo registro ante duplicados. Los tipos admitidos son `PING`, `STATUS`, `TELEMETRY`, `BEACON_ON`, `BEACON_OFF` y `RELEASE_NOW`.
+Además de CSRF se envía `Idempotency-Key` con el mismo UUID canónico. En la estación local el backend impone unicidad por misión/ID y devuelve el mismo registro ante duplicados sin reenviar. Los tipos reales de esta etapa son `PING`, `STATUS`, `TELEMETRY` y `START_MISSION`. La demo también simula `RELEASE_NOW`; la liberación física y la sesión/identidad de operador para acceso compartido siguen pendientes. `commandSettings` incluye `enabled`, `supportedTypes`, `reason` y `uplinkIntervalSeconds`. No se habilitan todos los tipos por una bandera global.
 
-`Command`: `id`, `missionId`, `clientRequestId`, `type`, `status`, `createdAt`, `updatedAt`, `evidence`, `simulated`. En la estación real, `simulated` es `false`.
+`Command`: `id`, `missionId`, `clientRequestId`, `type`, `status`, `createdAt`, `updatedAt`, `evidence`, `simulated`; el backend real incluye además `watchdogSeconds`, fijado por la misión al reservar la solicitud. En la estación real, `simulated` es `false`. `START_MISSION` requiere telemetría reciente; solo la ejecución confirmada por firmware fija `startedAt` y habilita los contadores, sin inferir ascenso.
 
 | Estado     | Evidencia esperada                                                   |
 | ---------- | -------------------------------------------------------------------- |

@@ -3,6 +3,8 @@
   "name": "ORBITIUM",
   "source": "chirpstack-local",
   "applicationId": "REEMPLAZAR_APPLICATION_ID",
+  "applicationName": "REEMPLAZAR_NOMBRE_DE_APLICACION",
+  "plannedLaunchAt": null,
   "deviceEui": "REEMPLAZAR_DEVEUI",
   "launch": {
     "latitude": null,
@@ -14,6 +16,6 @@
   "nominalAscentMs": null,
   "nominalDescentMs": null,
   "watchdogSeconds": null,
-  "staleAfterSeconds": 360,
+  "staleAfterSeconds": 21900,
   "region": "US915"
 }

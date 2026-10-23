@@ -8,6 +8,8 @@ from app.presentation.schemas.prediction import PredictionDTO, PredictionSetting
 class MissionConfig(DTO):
     id: Annotated[str, Field(pattern=r"^[a-zA-Z0-9_-]{1,128}$")]
     name: Annotated[str, Field(min_length=1, max_length=256)]
+    applicationName: Annotated[str, Field(min_length=1, max_length=256)] | None = None
+    plannedLaunchAt: str | None = None
     source: Annotated[str, Field(min_length=1, max_length=128)]
     applicationId: Annotated[str, Field(min_length=1, max_length=128, pattern=r"^[^/+#]+$")]
     deviceEui: Annotated[str, Field(pattern=r"^[0-9a-fA-F]{16}$")]
@@ -25,10 +27,30 @@ class MissionConfig(DTO):
     def lower_eui(cls, value: str) -> str:
         return value.lower()
 
+    @field_validator("plannedLaunchAt")
+    @classmethod
+    def planned_time(cls, value: str | None) -> str | None:
+        return None if value is None else utc_time(value).isoformat()
+
+
+class MissionParameters(DTO):
+    plannedLaunchAt: str | None
+    launch: Position
+    launchLabel: Annotated[str, Field(min_length=1, max_length=256, pattern=r"\S")]
+    targetRelativeAltitudeM: Annotated[float, Field(ge=1000, le=15000)]
+
+    @field_validator("plannedLaunchAt")
+    @classmethod
+    def planned_time(cls, value: str | None) -> str | None:
+        return None if value is None else utc_time(value).isoformat()
+
 
 class MissionDTO(DTO):
     id: str
     name: str
+    applicationId: str | None = None
+    applicationName: str | None = None
+    plannedLaunchAt: str | None = None
     updatedAt: str
     startedAt: str | None
     endedAt: str | None
@@ -52,13 +74,13 @@ class TelemetryDTO(DTO):
     frameCounter: Annotated[int, Field(ge=0, le=4294967295)]
     latitude: Annotated[float, Field(ge=-90, le=90)] | None
     longitude: Annotated[float, Field(ge=-180, le=180)] | None
-    altitudeGpsM: Annotated[float, Field(ge=-500, le=32767)] | None
+    altitudeGpsM: Annotated[float, Field(ge=-500, le=65534)] | None
     relativeAltitudeM: float | None
     altitudeBarometricM: None
-    verticalSpeedMs: None
+    verticalSpeedMs: Annotated[float, Field(ge=-200, le=200)] | None
     temperatureC: Annotated[float, Field(ge=-127, le=127)] | None
     pressureHpa: Annotated[float, Field(ge=5, le=1270)] | None
-    humidityPct: None
+    humidityPct: Annotated[float, Field(ge=0, le=100)] | None
     batteryV: Annotated[float, Field(ge=0, le=5.08)] | None
     rssiDbm: Annotated[float, Field(ge=-200, le=20)] | None
     snrDb: Annotated[float, Field(ge=-40, le=40)] | None
