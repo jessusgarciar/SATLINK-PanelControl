@@ -1,7 +1,7 @@
 from typing import Literal
 
-CommandType = Literal["PING", "STATUS", "TELEMETRY", "START_MISSION"]
-COMMAND_TYPES = ("PING", "STATUS", "TELEMETRY", "START_MISSION")
+CommandType = Literal["PING", "STATUS", "TELEMETRY", "START_MISSION", "RELEASE_NOW"]
+COMMAND_TYPES = ("PING", "STATUS", "TELEMETRY", "START_MISSION", "RELEASE_NOW")
 
 
 class CommandConflict(ValueError):

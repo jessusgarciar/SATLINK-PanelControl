@@ -244,8 +244,9 @@ export class MissionController {
     if (
       type === 'RELEASE_NOW' &&
       (!actionConfirmed ||
-        s.mission.phase !== 'ascending' ||
-        s.commands.some((c) => c.type === type && !['rejected', 'expired'].includes(c.status)))
+        (s.mission.telemetryProtocol !== 'radiosonda-v1' && s.mission.phase !== 'ascending') ||
+        s.commands.some((c) => c.type === type && (s.mission.telemetryProtocol === 'radiosonda-v1'
+          ? ['pending', 'sent', 'received'].includes(c.status) : !['rejected', 'expired'].includes(c.status))))
     ) {
       this.update({
         actionError:

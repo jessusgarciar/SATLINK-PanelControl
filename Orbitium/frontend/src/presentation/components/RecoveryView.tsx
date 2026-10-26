@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState } from 'react'
 import type { MissionController, MissionState } from '../../application/MissionController.ts'
 import type { PredictionParameters } from '../../domain/mission.ts'
-import { distanceKm, latestSample, MAX_TARGET_RELATIVE_ALTITUDE_M, predictionUnavailableReason, predictionParametersChanged } from '../../domain/mission.ts'
+import { distanceKm, latestPosition, targetAltitude, MAX_TARGET_RELATIVE_ALTITUDE_M, predictionUnavailableReason, predictionParametersChanged } from '../../domain/mission.ts'
 import { ageLabel, clock, dateTime, duration, km, number } from '../format.ts'
 import type { MapSettings } from './MissionMap.tsx'
 import { Definition, Dialog, PhaseChip, RangeInput, SectionTitle } from './ui.tsx'
@@ -30,7 +30,7 @@ export default function RecoveryView({
 }) {
   const snapshot = state.snapshot!
   const { mission, prediction } = snapshot
-  const latest = latestSample(snapshot.telemetry)
+  const latest = latestPosition(snapshot.telemetry)
   const simulated = controller.gateway.mode === 'demo'
   const demo = simulated && !controller.gateway.realPrediction
   const [parameters, setParameters] = useState<PredictionParameters>(
@@ -78,7 +78,7 @@ export default function RecoveryView({
   const sliders = [
     {
       key: 'targetRelativeAltitudeM' as const,
-      label: 'Altitud de liberación · relativa',
+      label: mission.altitudeTargetMode === 'absolute' ? 'Altitud de corte · s. n. m.' : 'Altitud de liberación · relativa',
       min: 1000,
       max: MAX_TARGET_RELATIVE_ALTITUDE_M,
       step: 500,
@@ -324,7 +324,7 @@ export default function RecoveryView({
                       <Definition label="Origen del cálculo">{number(prediction.context.origin.latitude, 6)}°, {number(prediction.context.origin.longitude, 6)}°</Definition>
                       <Definition label="Altitud inicial · s. n. m.">{number(prediction.context.origin.altitudeM, 1)} m</Definition>
                       <Definition label="Inicio del cálculo · UTC">{prediction.context.originAt}</Definition>
-                      <Definition label="Liberación · s. n. m.">{number((prediction.parameters.launch?.altitudeM ?? mission.launch.altitudeM) + prediction.parameters.targetRelativeAltitudeM, 1)} m</Definition>
+                      <Definition label="Liberación · s. n. m.">{number(targetAltitude(mission, prediction.parameters.targetRelativeAltitudeM, prediction.parameters.launch?.altitudeM ?? mission.launch.altitudeM), 1)} m</Definition>
                       <Definition label="Paquete utilizado">{prediction.context.inputSource === 'simulated' ? 'Entrada de demostración' : prediction.context.telemetryId ?? 'No aplica · planificación'}</Definition>
                     </dl></article>] : []),
                   ]} />
@@ -354,7 +354,7 @@ export default function RecoveryView({
                           profile: 'standard_profile', launch_latitude: origin.latitude,
                           launch_longitude: (origin.longitude + 360) % 360, launch_altitude: origin.altitudeM,
                           launch_datetime: prediction.context!.originAt,
-                          burst_altitude: (prediction.parameters.launch?.altitudeM ?? mission.launch.altitudeM) + prediction.parameters.targetRelativeAltitudeM,
+                          burst_altitude: targetAltitude(mission, prediction.parameters.targetRelativeAltitudeM, prediction.parameters.launch?.altitudeM ?? mission.launch.altitudeM),
                           ascent_rate: prediction.parameters.ascentRateMs, descent_rate: prediction.parameters.descentRateMs,
                           dataset: prediction.context!.dataset,
                         }, null, 2))

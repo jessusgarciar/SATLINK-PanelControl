@@ -1,6 +1,7 @@
 import asyncio
 import secrets
 import math
+import json
 from pathlib import Path
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager, contextmanager, suppress
@@ -19,7 +20,7 @@ from app.infrastructure.mqtt.consumer import consume
 from app.infrastructure.mqtt.picaro import decode_payload
 from app.presentation.api.local import LocalOnlyMiddleware
 from app.presentation.api.streaming import CsvStreamingResponse
-from app.presentation.schemas.api import DashboardDTO, HistoryDTO, WindowDTO, MissionDTO, MissionParameters
+from app.presentation.schemas.api import DashboardDTO, HistoryDTO, WindowDTO, MissionDTO, MissionParameters, PacketPageDTO
 from app.infrastructure.mission_settings import MissionSettings
 from app.presentation.schemas.uplink import ChirpStackDecoder, utc_time
 from app.presentation.websocket.hub import TelemetryHub
@@ -64,6 +65,17 @@ def create_app(settings: Settings, store: PostgresStore | None = None,
             raise ValueError("El perfil de comandos debe coincidir con el origen y topic de la misión activa")
         mqtt_commands = ChirpStackCommands(settings, profile)
         command_transport = mqtt_commands
+    elif settings.mqtt_enabled:
+        path = mission_path or Path(__file__).resolve().parents[2] / "mission.local.json"
+        local = json.loads(path.read_text(encoding="utf-8-sig"))
+        if local.get("telemetryProtocol") == "radiosonda-v1":
+            expected = f"application/{local['applicationId']}/device/{local['deviceEui']}/event/up"
+            if mqtt_topic != expected or local["source"] != settings.source:
+                raise ValueError("Identidad radiosonda no coincide con la suscripción MQTT")
+            profile = CommandProfile(local["id"], local["applicationId"], local["deviceEui"], local["source"],
+                                     30, {"PING": "", "RELEASE_NOW": ""}, "radiosonda-v1")
+            mqtt_commands = ChirpStackCommands(settings, profile)
+            command_transport = mqtt_commands
     commander = RequestCommand(repository, hub, command_transport)
 
     async def ingest(topic: str, payload: bytes) -> object:
@@ -135,11 +147,11 @@ def create_app(settings: Settings, store: PostgresStore | None = None,
                 next_allowed = await repository.prediction_next_allowed_at(mission_id)
             can_command = (command_transport is not None and command_transport.supports(snapshot["mission"]) and
                            (mqtt_commands is None or source_of(snapshot) == settings.source))
-            supported = list(mqtt_commands.profile.payload_hex) if mqtt_commands else list(COMMAND_TYPES)
+            supported = list(mqtt_commands.profile.payload_hex) if mqtt_commands else [k for k in COMMAND_TYPES if k != "RELEASE_NOW"]
             snapshot["permissions"] = {"canCommand": can_command, "canPredict": can_predict}
             snapshot["commandSettings"] = {"enabled": can_command, "supportedTypes": supported if can_command else [],
                 "reason": None if can_command else "Pendiente de protocolo de comandos en firmware Heltec y perfil coincidente",
-                "uplinkIntervalSeconds": 21600}
+                "uplinkIntervalSeconds": 600 if snapshot["mission"].get("telemetryProtocol") == "radiosonda-v1" else 21600}
             snapshot["csrfToken"] = csrf_token
             snapshot["predictionSettings"] = {"enabled": settings.prediction_enabled,
                 "launchAltitudeReference": references.get("launchAltitudeReference", "unknown"),
@@ -148,6 +160,16 @@ def create_app(settings: Settings, store: PostgresStore | None = None,
             return snapshot
         except MissionNotFound as exc:
             raise HTTPException(404, "Misión inexistente") from exc
+
+    @app.get("/api/v1/missions/{mission_id}/packets", response_model=PacketPageDTO)
+    async def packets(mission_id: str, cursor: Annotated[str | None, Query(max_length=512)] = None,
+                      limit: Annotated[int, Query(ge=1, le=100)] = 50) -> dict:
+        try:
+            return await repository.packets(mission_id, cursor, limit)
+        except MissionNotFound as exc:
+            raise HTTPException(404, "Misión inexistente") from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
 
     @app.post("/api/v1/missions/{mission_id}/commands", response_model=CommandDTO, status_code=202)
     async def request_command(mission_id: str, payload: CommandRequest, request: Request) -> dict:
@@ -159,6 +181,8 @@ def create_app(settings: Settings, store: PostgresStore | None = None,
             raise HTTPException(422, "Idempotency-Key debe coincidir con clientRequestId")
         try:
             snapshot = await repository.dashboard(mission_id, 1)
+            if payload.type == "RELEASE_NOW" and snapshot["mission"].get("telemetryProtocol") != "radiosonda-v1":
+                raise HTTPException(422, "El corte requiere un perfil radiosonda compatible")
             if mqtt_commands is not None and source_of(snapshot) != settings.source:
                 raise CommandUnavailable("El origen persistido de la misión no coincide con el perfil MQTT")
             if mqtt_commands is not None and payload.type not in mqtt_commands.profile.payload_hex:

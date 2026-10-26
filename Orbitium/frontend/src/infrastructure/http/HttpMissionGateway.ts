@@ -9,6 +9,8 @@ import type {
 import { subscribeMission } from '../websocket/missionStream.ts'
 import { parseCommand, parsePrediction, parseSnapshot, parseHistory, parseWindow, parseMission } from './validation.ts'
 import type { TimeRange } from '../../domain/history.ts'
+import type { PacketPage } from '../../application/ports.ts'
+import { parsePackets } from './validation.ts'
 
 export class HttpMissionGateway implements MissionGateway {
   readonly mode = 'live' as const
@@ -61,6 +63,11 @@ export class HttpMissionGateway implements MissionGateway {
   }
   async load(signal: AbortSignal) {
     return parseSnapshot(await this.request('/dashboard?limit=1200', { signal }), this.missionId)
+  }
+  async packets(cursor: string | null, signal: AbortSignal): Promise<PacketPage> {
+    const query = new URLSearchParams({ limit: '50' })
+    if (cursor) query.set('cursor', cursor)
+    return parsePackets(await this.request('/packets?' + query, { signal }))
   }
   async saveParameters(parameters: MissionParameters, csrfToken: string | null) {
     const mission = parseMission(await this.request('/parameters', {

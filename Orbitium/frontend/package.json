@@ -10,7 +10,8 @@
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "test:ui": "node tests/mobile-ui.mjs",
     "test:commands-ui": "node --experimental-strip-types tests/commands-ui.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:radiosonda-ui": "node --experimental-strip-types tests/radiosonda-ui.mjs"
   },
   "dependencies": {
     "@hugeicons/core-free-icons": "4.3.5",

@@ -1,5 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
-import type { Mission, MissionParameters } from '../../domain/mission.ts'
+import PacketHistory from './PacketHistory.tsx'
+import type { MissionGateway } from '../../application/ports.ts'
+import type { Mission, MissionParameters, Telemetry } from '../../domain/mission.ts'
 import { number } from '../format.ts'
 import { AGS_TIME_LABEL, agsDateInput, agsDateTime, agsDateToUtc } from '../missionTime.ts'
 import type { MapSettings } from './MissionMap.tsx'
@@ -15,7 +17,9 @@ const numericFields = [
   { key: 'targetRelativeAltitudeM', label: 'Altitud objetivo relativa · m', min: 1000, max: 15000 },
 ] as const
 
-export default function MissionInformation({ mission, demo, online, mapSettings, onSave, onClose }: {
+export default function MissionInformation({ mission, demo, online, mapSettings, onSave, onClose, gateway, samples }: {
+  gateway: MissionGateway
+  samples: Telemetry[]
   mission: Mission | undefined
   demo: boolean
   online: boolean
@@ -116,9 +120,9 @@ export default function MissionInformation({ mission, demo, online, mapSettings,
             <p className="helper-text">El mapa selecciona coordenadas; introduce la altitud de lanzamiento manualmente.</p>
             <p className="mission-map-feedback" role="status">{mapMessage}</p>
           </section>
-          {numericFields.map(field => <label key={field.key} className="prediction-field"><span>{field.label}</span><input aria-label={field.label} type="number" required step="any" min={field.min} max={field.max} value={draft[field.key]} onChange={e => change(field.key, e.target.value)} aria-invalid={Boolean(errors[field.key])} aria-describedby={'mission-' + field.key + '-error'} /><small id={'mission-' + field.key + '-error'} className="mission-field-error">{errors[field.key]}</small></label>)}
+          {numericFields.map(field => <label key={field.key} className="prediction-field"><span>{field.key === 'targetRelativeAltitudeM' && mission.altitudeTargetMode === 'absolute' ? 'Altitud objetivo · m s. n. m.' : field.label}</span><input aria-label={field.key === 'targetRelativeAltitudeM' && mission.altitudeTargetMode === 'absolute' ? 'Altitud objetivo · m s. n. m.' : field.label} type="number" required step="any" min={field.min} max={field.max} value={draft[field.key]} onChange={e => change(field.key, e.target.value)} aria-invalid={Boolean(errors[field.key])} aria-describedby={'mission-' + field.key + '-error'} /><small id={'mission-' + field.key + '-error'} className="mission-field-error">{errors[field.key]}</small></label>)}
         </fieldset>
-        <p className="helper-text">El objetivo se mide sobre el punto de lanzamiento · máximo 15 000 m.</p>
+        <p className="helper-text">{mission.altitudeTargetMode === 'absolute' ? 'El objetivo usa directamente la altitud del dispositivo · máximo 15 000 m.' : 'El objetivo se mide sobre el punto de lanzamiento · máximo 15 000 m.'}</p>
         {error && <p className="inline-error" role="alert">{error} Tus cambios se conservan en el formulario.</p>}
         <div className="mission-information-actions"><button type="button" className="button subtle" disabled={saving} onClick={() => { setEditing(false); setError(''); setErrors({}) }}>Cancelar</button><button type="submit" className="button" disabled={saving}>{saving ? 'Guardando…' : 'Guardar parámetros'}</button></div>
       </form> : <>
@@ -127,13 +131,14 @@ export default function MissionInformation({ mission, demo, online, mapSettings,
           <Definition label="Ubicación">{mission.launchLabel}</Definition>
           <Definition label="Latitud / Longitud">{number(mission.launch.latitude, 5)}° / {number(mission.launch.longitude, 5)}°</Definition>
           <Definition label="Altitud de lanzamiento">{number(mission.launch.altitudeM, 0)} m s. n. m.</Definition>
-          <Definition label="Altitud objetivo relativa">+{number(mission.targetRelativeAltitudeM, 0)} m</Definition>
+          <Definition label={mission.altitudeTargetMode === 'absolute' ? 'Altitud objetivo · s. n. m.' : 'Altitud objetivo relativa'}>{number(mission.targetRelativeAltitudeM, 0)} m</Definition>
           <Definition label="Región LoRaWAN">{mission.region}</Definition>
         </dl>
         <div className="mission-information-actions"><button className="button" onClick={edit}>Editar parámetros</button></div>
       </>}
     </section> : <p role="status" className="helper-text">Esperando la configuración de la misión. Revisa la conexión con la estación.</p>}
     <p role="status" className="mission-information-feedback">{message}</p>
+    <PacketHistory gateway={gateway} samples={samples} />
     </div>
   </Dialog>
 }

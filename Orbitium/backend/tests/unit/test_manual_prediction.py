@@ -97,3 +97,12 @@ def test_ascending_cannot_replace_received_gps_with_manual_planning_origin(extra
             "descentRateMs": 6.5, **extras}
     with pytest.raises(ValidationError):
         ADAPTER.validate_python(body)
+
+
+async def test_radiosonda_absolute_target_uses_15000_without_adding_launch():
+    service, store, provider, _, current = service_doubles()
+    current["mission"]["altitudeTargetMode"] = "absolute"
+    body = planned_body(launch=MANUAL_ORIGIN, launchAltitudeReference="MSL")
+    result = await service.execute("test-flight", ADAPTER.validate_python(body).model_dump(mode="json"), {})
+    assert provider.predict.await_args.args[0]["burst_altitude"] == 15000
+    assert result["release"]["altitudeM"] == 15000

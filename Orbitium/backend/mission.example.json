@@ -15,7 +15,9 @@
   "targetRelativeAltitudeM": 15000,
   "nominalAscentMs": null,
   "nominalDescentMs": null,
-  "watchdogSeconds": null,
-  "staleAfterSeconds": 21900,
-  "region": "US915"
+  "watchdogSeconds": 3300,
+  "staleAfterSeconds": 900,
+  "region": "US915",
+  "telemetryProtocol": "radiosonda-v1",
+  "altitudeTargetMode": "absolute"
 }

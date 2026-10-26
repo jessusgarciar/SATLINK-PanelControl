@@ -18,6 +18,7 @@ export interface HistoryGateway {
 }
 
 export interface MissionGateway extends HistoryGateway {
+  packets?(cursor: string | null, signal: AbortSignal): Promise<PacketPage>
   readonly mode: 'demo' | 'live'
   readonly realPrediction?: boolean
   load(signal: AbortSignal): Promise<DashboardSnapshot>
@@ -35,3 +36,15 @@ export interface MissionGateway extends HistoryGateway {
   predict(parameters: PredictionParameters, csrfToken: string | null): Promise<Prediction>
   setPaused?(paused: boolean): void
 }
+
+export interface PacketRecord {
+  id: string
+  receivedAt: string | null
+  ingestedAt: string
+  status: 'accepted' | 'rejected'
+  reason: string | null
+  decoded: Record<string, unknown>
+  raw: Record<string, unknown>
+  rawBase64: string
+}
+export interface PacketPage { items: PacketRecord[]; nextCursor: string | null }

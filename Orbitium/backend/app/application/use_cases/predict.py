@@ -107,7 +107,7 @@ def normalize_prediction(raw: JsonObject, mission_id: str, attempt_id: str,
             abs(descent[0]["altitudeM"] - release["altitudeM"]) > 1):
         raise PredictionInvalid("La transición del resultado es discontinua")
     if context["mode"] == "planned":
-        target = origin["altitudeM"] + parameters["targetRelativeAltitudeM"]
+        target = expected_request["burst_altitude"] if expected_request is not None else origin["altitudeM"] + parameters["targetRelativeAltitudeM"]
         if (abs(release["altitudeM"] - target) > 10 or
                 any(p["altitudeM"] > target + 10 for p in ascent + descent)):
             raise PredictionInvalid("El resultado no alcanza el objetivo de transición solicitado")
@@ -188,7 +188,7 @@ class PredictMission:
                       "altitudeM": latest["altitudeGpsM"]}
             telemetry_id = latest["id"]
         launch_altitude = origin["altitudeM"] if mode == "planned" else mission["launch"]["altitudeM"]
-        target = launch_altitude + parameters["targetRelativeAltitudeM"]
+        target = parameters["targetRelativeAltitudeM"] + (0 if mission.get("altitudeTargetMode") == "absolute" else launch_altitude)
         if target <= origin["altitudeM"]:
             raise PredictionInvalid("La altitud de transición debe superar la altitud de origen")
         context = {"mode": mode, "origin": origin, "originAt": origin_at.isoformat(),

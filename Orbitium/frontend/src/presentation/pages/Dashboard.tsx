@@ -47,14 +47,17 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
   const age = dataAgeSeconds(latest, now)
   const stale = age === null || age > (mission?.staleAfterSeconds ?? 15)
   const demo = controller.gateway.mode === 'demo'
-  const elapsed = mission?.startedAt
+  const autonomous = mission?.telemetryProtocol === 'radiosonda-v1'
+  const flight = mission?.flightState
+  const reportedFlightTime = typeof flight?.tVueloS === 'number' ? flight.tVueloS : null
+  const elapsed = autonomous ? reportedFlightTime : mission?.startedAt
     ? ((mission.endedAt ? Date.parse(mission.endedAt) : now) - Date.parse(mission.startedAt)) / 1000
     : null
   const progress =
     readings?.relativeAltitudeM != null && mission
       ? Math.max(
           0,
-          Math.min(100, (readings.relativeAltitudeM / mission.targetRelativeAltitudeM) * 100),
+          Math.min(100, ((mission.altitudeTargetMode === 'absolute' ? readings.altitudeGpsM ?? 0 : readings.relativeAltitudeM) / mission.targetRelativeAltitudeM) * 100),
         )
       : null
   const releaseEvent = snapshot?.events.find((event) => event.type === 'release')
@@ -63,7 +66,7 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
       <a className="skip-link" href="#mission-dashboard">
         Saltar al panel de telemetría
       </a>
-      <MissionHeader mission={mission} elapsed={elapsed} mode={controller.gateway.mode} onModeChange={onModeChange} deviceOnline={!stale && state.connection === 'connected' && snapshot?.ingestion?.status === 'connected'} mapSettings={mapSettings} onSaveParameters={controller.saveParameters} />
+      <MissionHeader gateway={controller.gateway} samples={snapshot?.telemetry ?? []} mission={mission} elapsed={elapsed} mode={controller.gateway.mode} onModeChange={onModeChange} deviceOnline={!stale && state.connection === 'connected' && snapshot?.ingestion?.status === 'connected'} mapSettings={mapSettings} onSaveParameters={controller.saveParameters} />
       <main id="mission-dashboard" className="dashboard-shell">
         <div
           className={
@@ -139,13 +142,13 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
               <DataCard
                 label="Tiempo de misión"
                 value={duration(elapsed)}
-                detail={mission.endedAt ? 'Misión finalizada' : mission.startedAt ? 'Desde el inicio confirmado' : 'Pendiente de iniciar misión'}
+                detail={autonomous ? (reportedFlightTime === null ? 'Sin tiempo de vuelo reportado' : 'Último tiempo reportado por firmware') : mission.endedAt ? 'Misión finalizada' : mission.startedAt ? 'Desde el inicio confirmado' : 'Pendiente de iniciar misión'}
                 tone="cyan"
               />
               <DataCard
                 label="Watchdog"
                 value={elapsed === null ? '—' : duration(mission.watchdogSeconds - elapsed)}
-                detail={mission.startedAt ? 'Referencia · timer autónomo en Heltec' : 'Pendiente de inicio confirmado'}
+                detail={autonomous ? (flight?.watchdogActive === true ? 'Activo según firmware · última evidencia recibida' : 'Esperando evidencia de despegue') : mission.startedAt ? 'Referencia · timer autónomo en Heltec' : 'Pendiente de inicio confirmado'}
                 tone="amber"
               />
               <DataCard

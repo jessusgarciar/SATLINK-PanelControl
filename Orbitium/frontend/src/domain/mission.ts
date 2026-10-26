@@ -35,6 +35,9 @@ export interface Position {
   altitudeM: number
 }
 export interface Mission {
+  telemetryProtocol?: 'legacy' | 'radiosonda-v1'
+  altitudeTargetMode?: 'relative' | 'absolute'
+  flightState?: Record<string, unknown> | null
   id: string
   name: string
   applicationId?: string | null
@@ -62,6 +65,7 @@ export interface MissionParameters {
   targetRelativeAltitudeM: number
 }
 export interface Telemetry {
+  packet?: Record<string, unknown> & { presentFields?: string[]; presentDeviceFields?: string[] }
   id: string
   missionId: string
   receivedAt: string
@@ -116,6 +120,8 @@ export interface Prediction {
   release: Position & { time: string }
 }
 export interface Command {
+  seq?: number | null
+  result?: Record<string, unknown> | null
   id: string
   missionId: string
   clientRequestId: string
@@ -238,6 +244,12 @@ export function mergeEvents(
 export function latestSample(samples: Telemetry[]): Telemetry | null {
   return samples.at(-1) ?? null
 }
+export function latestPosition(samples: Telemetry[]): Telemetry | null {
+  return [...samples].reverse().find(s => !s.packet || s.packet.presentFields?.includes('latitude')) ?? null
+}
+export function targetAltitude(mission: Mission, value = mission.targetRelativeAltitudeM, launchAltitude = mission.launch.altitudeM): number {
+  return value + (mission.altitudeTargetMode === 'absolute' ? 0 : launchAltitude)
+}
 export function dataAgeSeconds(sample: Telemetry | null, now: number): number | null {
   return sample ? Math.max(0, Math.floor((now - Date.parse(sample.receivedAt)) / 1000)) : null
 }
@@ -297,12 +309,12 @@ export function predictionUnavailableReason(
   } else if (p.mode === 'ascending') {
     if (snapshot.predictionSettings.gpsAltitudeReference !== 'MSL')
       return 'Confirma que la altitud GPS está sobre el nivel del mar.'
-    const sample = latestSample(snapshot.telemetry)
+    const sample = latestPosition(snapshot.telemetry)
     if (!sample || sample.latitude === null || sample.longitude === null || sample.altitudeGpsM === null ||
         sample.device?.gpsFix === false || Date.parse(sample.receivedAt) > now + 5000 ||
         now - Date.parse(sample.receivedAt) > snapshot.mission.staleAfterSeconds * 1000)
       return 'El ascenso requiere el último paquete con GPS válido y reciente.'
-    if (snapshot.mission.launch.altitudeM + p.targetRelativeAltitudeM <= sample.altitudeGpsM)
+    if (targetAltitude(snapshot.mission, p.targetRelativeAltitudeM) <= sample.altitudeGpsM)
       return 'La altitud de liberación debe superar la altitud GPS actual.'
   } else return 'Selecciona planificación o ascenso para calcular.'
   return null
