@@ -51,3 +51,38 @@ async def test_cancelled_prediction_records_failure_without_publishing():
     store.fail_prediction.assert_awaited_once_with("attempt-1", "cancelled", None)
     store.complete_prediction.assert_not_awaited()
     publisher.publish_prediction.assert_not_awaited()
+
+
+async def test_slow_prediction_can_finish_after_the_previous_ten_second_deadline():
+    from tests.unit.test_manual_prediction import prediction_response
+    store, provider, publisher = AsyncMock(), AsyncMock(), AsyncMock()
+    current, parameters = context_and_parameters()
+    store.prediction_context.return_value = current
+    store.reserve_prediction.return_value = "slow-success"
+    async def slow_response(request):
+        await asyncio.sleep(10.1)
+        return prediction_response(request)
+    provider.predict.side_effect = slow_response
+    result = await PredictMission(store, provider, publisher).execute(
+        "test-flight", parameters, {"launchAltitudeReference": "MSL"})
+    assert result["id"] == "slow-success"
+    store.complete_prediction.assert_awaited_once()
+    store.fail_prediction.assert_not_awaited()
+    provider.predict.assert_awaited_once()
+
+
+async def test_total_deadline_cancels_request_without_publishing_or_retrying():
+    store, provider, publisher = AsyncMock(), AsyncMock(), AsyncMock()
+    current, parameters = context_and_parameters()
+    store.prediction_context.return_value = current
+    store.reserve_prediction.return_value = "deadline-failure"
+    async def pending(request):
+        await asyncio.Event().wait()
+    provider.predict.side_effect = pending
+    with pytest.raises(PredictionTimeout, match="superó"):
+        await PredictMission(store, provider, publisher, timeout_seconds=0.01).execute(
+            "test-flight", parameters, {"launchAltitudeReference": "MSL"})
+    store.fail_prediction.assert_awaited_once_with("deadline-failure", "timeout", None)
+    store.complete_prediction.assert_not_awaited()
+    publisher.publish_prediction.assert_not_awaited()
+    provider.predict.assert_awaited_once()

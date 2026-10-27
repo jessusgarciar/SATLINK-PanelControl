@@ -5,8 +5,9 @@ import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent, AriaComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import type { EChartsOption, LineSeriesOption } from 'echarts'
-import type { Telemetry } from '../../domain/mission.ts'
+import type { Mission, Telemetry } from '../../domain/mission.ts'
 import { telemetryPoints } from '../readings.ts'
+import type { ChartField } from '../readings.ts'
 import { AGS_TIME_LABEL, agsDateTime } from '../missionTime.ts'
 import { SectionTitle } from './ui.tsx'
 
@@ -21,13 +22,13 @@ echarts.use([
 const colors = {
   cyan: '#2563eb',
   amber: '#d97706',
-  purple: '#7c3aed',
+  red: '#dc2626',
   blue: '#0284c7',
   green: '#16a34a',
 }
 const chartOptions = { renderer: 'canvas' as const }
 type SeriesConfig = {
-  key: keyof Telemetry
+  key: ChartField
   label: string
   color: string
   scale?: number
@@ -46,15 +47,15 @@ const configs: { title: string; unit: string; series: SeriesConfig[]; secondUnit
   {
     title: 'Temperatura interna (°C)',
     unit: '°C',
-    series: [{ key: 'temperatureC', label: 'Temperatura', color: colors.amber, area: true }],
+    series: [{ key: 'temperatureC', label: 'Temperatura', color: colors.red, area: true }],
   },
   {
     title: 'Humedad (%) · Presión (hPa)',
     unit: '%',
     secondUnit: 'hPa',
     series: [
-      { key: 'humidityPct', label: 'Humedad', color: colors.purple },
-      { key: 'pressureHpa', label: 'Presión', color: colors.blue, axis: 1 },
+      { key: 'humidityPct', label: 'Humedad', color: colors.blue },
+      { key: 'pressureHpa', label: 'Presión', color: colors.cyan, axis: 1 },
     ],
   },
   {
@@ -209,10 +210,24 @@ const Chart = memo(function Chart({
     </section>
   )
 })
-export default function TelemetryCharts({ samples, sectionId }: { samples: Telemetry[]; sectionId?: string }) {
+export default function TelemetryCharts({ samples, sectionId, protocol }: {
+  samples: Telemetry[]; sectionId?: string; protocol?: Mission['telemetryProtocol']
+}) {
+  const displayedConfigs = useMemo(() => configs.map(config => {
+    if (protocol !== 'radiosonda-meca-v1') return config
+    const keys: Partial<Record<ChartField, ChartField>> = {
+      temperatureC: 'boardTemperatureC', humidityPct: 'boardHumidityPct', pressureHpa: 'boardPressureHpa',
+    }
+    return {
+      ...config,
+      title: config.unit === '°C' ? 'BME de placa · temperatura (°C)'
+        : config.secondUnit ? 'BME de placa · humedad (%) y presión (hPa)' : config.title,
+      series: config.series.map(series => ({ ...series, key: keys[series.key] ?? series.key })),
+    }
+  }), [protocol])
   return (
     <div id={sectionId} tabIndex={sectionId ? -1 : undefined} className="charts-grid">
-      {configs.map((config) => (
+      {displayedConfigs.map((config) => (
         <Chart key={config.title} samples={samples} config={config} />
       ))}
     </div>

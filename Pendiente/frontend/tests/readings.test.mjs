@@ -51,3 +51,16 @@ test('chart points retain reception times and omit unrelated empty packets witho
     [[Date.parse(navigation.receivedAt), 0]])
   assert.deepEqual(telemetryPoints([packet(1, { temperatureC: NaN }), packet(2, { receivedAt: 'invalid', temperatureC: 2 })], 'temperatureC'), [])
 })
+
+test('MECA charts use board measurements at their packet timestamps without substituting external sensors', () => {
+  const samples = [packet(10, { temperatureC: 99, packet: { fPort: 21 } }),
+    packet(20, { temperatureC: null, packet: { fPort: 23, boardTemperatureC: 27.5, boardHumidityPct: 48, boardPressureHpa: 816.1 } }),
+    packet(30, { packet: { fPort: 23, boardTemperatureC: null } }),
+    packet(40, { packet: { fPort: 23, boardTemperatureC: 0 } })]
+  const original = structuredClone(samples)
+  assert.deepEqual(telemetryPoints(samples, 'boardTemperatureC'), [[Date.parse(packet(20).receivedAt), 27.5], [Date.parse(packet(40).receivedAt), 0]])
+  assert.deepEqual(telemetryPoints(samples, 'boardHumidityPct'), [[Date.parse(packet(20).receivedAt), 48]])
+  assert.deepEqual(telemetryPoints(samples, 'boardPressureHpa'), [[Date.parse(packet(20).receivedAt), 816.1]])
+  assert.deepEqual(telemetryPoints(samples, 'temperatureC'), [[Date.parse(packet(10).receivedAt), 99]])
+  assert.deepEqual(samples, original)
+})

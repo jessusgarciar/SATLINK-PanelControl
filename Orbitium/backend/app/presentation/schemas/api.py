@@ -142,6 +142,7 @@ class DashboardDTO(DTO):
     commandSettings: CommandSettingsDTO = Field(default_factory=CommandSettingsDTO)
     events: Annotated[list, Field(max_length=0)] = Field(default_factory=list)
     prediction: "PredictionDTO | None" = None
+    predictionHistory: Annotated[list[PredictionDTO], Field(max_length=4)] = Field(default_factory=list)
     permissions: Permissions = Field(default_factory=Permissions)
     csrfToken: str | None = None
     ingestion: IngestionDTO | None = None

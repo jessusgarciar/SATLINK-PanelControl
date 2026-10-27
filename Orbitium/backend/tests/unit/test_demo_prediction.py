@@ -21,6 +21,7 @@ def doubles():
     store.reserve_prediction.return_value = "demo-attempt"
     provider.predict.side_effect = prediction_response
     store.latest_prediction.return_value = None
+    store.prediction_history.return_value = []
     store.prediction_next_allowed_at.return_value = None
     return store, provider, publisher
 

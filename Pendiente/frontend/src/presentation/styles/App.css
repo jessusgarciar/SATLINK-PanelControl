@@ -184,6 +184,9 @@
 .metrics-secondary {
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }
+.mission-readings > .section-title {
+  margin-bottom: 14px;
+}
 .data-card {
   display: flex;
   flex-direction: column;
@@ -564,6 +567,8 @@
 .helper-text.tone-amber {
   color: var(--amber);
 }
+.firmware-state { margin-top: 16px; }
+.firmware-state h3 { color: var(--cyan); font-size: 14px; }
 .command-log {
   background: var(--surface-deep);
   border: 1px solid #2563eb0f;
@@ -1169,7 +1174,9 @@
   .command-buttons .danger {
     margin-left: 0;
   }
-  .command-log {
+  .firmware-state { margin-top: 16px; }
+.firmware-state h3 { color: var(--cyan); font-size: 14px; }
+.command-log {
     padding: 8px;
   }
   .command-entry > div {

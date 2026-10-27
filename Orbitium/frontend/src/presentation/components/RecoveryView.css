@@ -1,0 +1,45 @@
+.prediction-intro { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:16px; }
+.prediction-intro h3 { font-size:clamp(19px, 2vw, 26px); margin:8px 0; }
+.prediction-intro p { color:var(--muted); line-height:1.6; }
+.prediction-intro .recovery-status { justify-content:flex-end; margin:0; }
+.prediction-mode-picker { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px; }
+.prediction-mode-picker button { text-align:left; border:1px solid var(--border, #243b50); border-radius:4px; background:#0c1623; color:var(--text, #e1ecfa); padding:16px 20px; cursor:pointer; display:grid; gap:8px; font:inherit; }
+.prediction-mode-picker strong { font-size:16px; }
+.prediction-mode-picker span { color:var(--muted); font-size:12px; line-height:1.5; }
+.prediction-mode-picker button[aria-pressed=true] { border-color:var(--cyan); background:#082735; box-shadow:inset 4px 0 var(--cyan); }
+.prediction-mode-picker button[aria-pressed=true] strong { color:var(--cyan); }
+.prediction-workspace button:focus-visible, .prediction-workspace summary:focus-visible { outline:2px solid var(--cyan); outline-offset:3px; }
+.prediction-readiness { border:1px solid #1c4b53; background:#0a2028; border-radius:4px; padding:12px 16px; margin-bottom:16px; display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; line-height:1.6; }
+.prediction-readiness strong { color:var(--cyan); }
+.prediction-readiness span { color:var(--muted); font-size:12px; flex:1 1 280px; }
+.prediction-readiness.is-blocked { border-color:#655026; background:#231d12; }
+.prediction-readiness.is-blocked strong { color:var(--amber); }
+.prediction-workspace .recovery-grid { grid-template-columns:minmax(290px, .85fr) minmax(0, 1.3fr); gap:16px; }
+.prediction-output { display:grid; gap:14px; min-width:0; }
+.prediction-workspace .recovery-map-panel { position:static; }
+.prediction-workspace .overview-map .leaflet-host { height:390px; min-height:280px; }
+.prediction-workspace fieldset { border:0; padding:0; margin:0; min-width:0; }
+.prediction-workspace .prediction-field { margin:12px 0; }
+.prediction-workspace input[type=number], .prediction-workspace input[type=datetime-local] { width:100%; min-height:44px; }
+.prediction-workspace summary { cursor:pointer; color:var(--cyan); line-height:1.7; padding:4px 0; }
+.prediction-origin-summary { display:grid; gap:8px; padding:12px 0 4px; font-size:12px; line-height:1.6; }
+.prediction-origin-summary span { color:var(--muted); }
+.prediction-location-editor { margin:10px 0; }
+.prediction-confirm { display:flex; align-items:center; gap:8px; color:var(--muted); font-size:13px; line-height:1.6; margin:14px 0; }
+.prediction-confirm input { margin-top:3px; flex-shrink:0; min-width:24px; min-height:44px; }
+.prediction-gps-summary { padding:12px; border:1px solid #243b50; border-radius:4px; margin:12px 0; font-size:12px; line-height:1.7; }
+.prediction-reset { margin:10px 0 16px; min-height:44px; }
+.prediction-calculate { min-height:46px; }
+.prediction-pending, .prediction-comparison { padding:12px; border:1px solid #655026; border-radius:4px; margin:10px 0 14px; color:var(--amber); font-size:12px; line-height:1.7; }
+.prediction-pending p, .prediction-comparison p { margin:6px 0 0; }
+.prediction-comparison small { display:block; color:var(--muted); margin-top:8px; }
+.prediction-result-metrics { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin:18px 0; }
+.prediction-result-metrics .definition { display:grid; gap:8px; font-size:13px; overflow-wrap:anywhere; }
+.prediction-result-metrics dt { font-size:10px; color:var(--muted); }
+.prediction-used { padding:12px; background:#09121e; color:var(--muted); font-size:12px; line-height:1.8; margin:12px 0; }
+.prediction-used strong { color:var(--text, #e1ecfa); }
+.prediction-export { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0; }
+.prediction-workspace .panel { min-width:0; }
+.prediction-workspace .helper-text { font-size:11px; line-height:1.7; }
+@media (max-width:900px) { .prediction-workspace .recovery-grid { grid-template-columns:1fr; } .prediction-intro { align-items:flex-start; flex-direction:column; } .prediction-intro .recovery-status { justify-content:flex-start; } }
+@media (max-width:520px) { .prediction-mode-picker { gap:8px; } .prediction-mode-picker button { padding:14px 12px; } .prediction-mode-picker span { font-size:11px; } .prediction-readiness { display:grid; } .prediction-result-metrics { grid-template-columns:1fr; } }

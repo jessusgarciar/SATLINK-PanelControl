@@ -222,7 +222,8 @@ def create_app(settings: Settings, store: PostgresStore | None = None,
         next_allowed = await repository.prediction_next_allowed_at("satlink-demo") if enabled else None
         return {"enabled": enabled, "csrfToken": csrf_token if enabled else None,
                 "nextAllowedAt": next_allowed.isoformat() if next_allowed else None,
-                "prediction": await repository.latest_prediction("satlink-demo") if enabled else None}
+                "prediction": await repository.latest_prediction("satlink-demo") if enabled else None,
+                "predictionHistory": await repository.prediction_history("satlink-demo") if enabled else []}
 
     @app.post("/api/v1/demo/predictions", response_model=PredictionDTO)
     async def demo_predict(payload: DemoPredictionRequest, request: Request) -> dict:

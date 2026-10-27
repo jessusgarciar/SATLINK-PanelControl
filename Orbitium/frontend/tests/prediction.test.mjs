@@ -89,7 +89,7 @@ test('provider failure preserves real prediction and refreshes persistent attemp
   await setImmediate()
   assert.equal(await controller.predict(parameters), false)
   assert.equal(controller.getSnapshot().snapshot.prediction.id, real.id)
-  assert.match(controller.getSnapshot().actionError, /timeout/)
+  assert.match(controller.getSnapshot().predictionActionError, /timeout/)
   assert.equal(await controller.predict(parameters), false)
   assert.equal(calls, 1)
   assert.equal(controller.getSnapshot().snapshot.mission.phase, 'unknown')

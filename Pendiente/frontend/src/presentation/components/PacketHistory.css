@@ -1,0 +1,17 @@
+.packet-history { border-top: 1px solid var(--border); padding-top: 24px; margin-top: 24px; }
+.packet-browser { display: grid; grid-template-columns: minmax(160px, .8fr) minmax(0, 1.4fr); gap: 16px; margin: 16px 0; align-items: start; }
+.packet-list { display: grid; gap: 8px; max-height: 440px; overflow-y: auto; padding: 3px; }
+.packet-select { cursor: pointer; text-align: left; display: grid; gap: 6px; width: 100%; min-height: 64px; color: var(--text); border: 1px solid var(--border); border-radius: 4px; background: var(--surface); padding: 12px; font: inherit; }
+.packet-select[aria-pressed="true"] { border-color: var(--cyan); background: #eff6ff; }
+.packet-select small, .packet-select time { color: var(--muted); font-size: .75rem; }
+.packet-select span { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; }
+.packet-select:focus-visible, .packet-detail summary:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.packet-detail { min-width: 0; padding: 16px; background: var(--surface-deep); border: 1px solid var(--border); border-radius: 4px; }
+.packet-detail h4 { margin: 0 0 8px; }
+.packet-fields { margin: 16px 0; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.packet-fields div { min-width: 0; }
+.packet-fields dt { font-size: .75rem; color: var(--muted); margin-bottom: 4px; }
+.packet-fields dd { margin: 0; overflow-wrap: anywhere; font-size: .875rem; }
+.packet-detail pre { max-height: 320px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .75rem; color: var(--text); }
+.packet-detail summary { cursor: pointer; padding: 10px 0; color: var(--cyan); }
+@media (max-width: 640px) { .packet-browser { grid-template-columns: minmax(0, 1fr); } .packet-list { max-height: 220px; } }

@@ -13,6 +13,7 @@ class CommandRequest(DTO):
 class CommandDTO(DTO):
     seq: Annotated[int, Field(ge=0, le=255)] | None = None
     result: dict | None = None
+    feedbackAt: str | None = None
     id: str
     missionId: str
     clientRequestId: str

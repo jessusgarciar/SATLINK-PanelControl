@@ -61,6 +61,36 @@ def authorized(app):
     return {"Origin": "http://localhost:5173", "X-CSRF-Token": app.state.prediction_csrf_token}
 
 
+async def test_dashboard_keeps_two_successes_per_mode_after_restart_and_ignores_failed_attempt(store, db_url):
+    from app.infrastructure.database.models import PredictionAttemptRow
+    created = datetime.now(timezone.utc) - timedelta(minutes=10)
+    async with store.sessions.begin() as session:
+        for mode in ("planned", "ascending"):
+            for index in range(3):
+                request = planned_request(mode=mode)
+                origin = {"latitude": 21.0, "longitude": -102.0, "altitudeM": 1870.0}
+                wire = {"profile": "standard_profile", "launch_latitude": 21.0, "launch_longitude": 258.0,
+                        "launch_altitude": 1870.0, "launch_datetime": request["launchDatetime"],
+                        "burst_altitude": 16870.0, "ascent_rate": 5.0, "descent_rate": 6.5}
+                at = created + timedelta(seconds=index)
+                result = normalize_prediction(synthetic_tawhiri(wire), "test-flight", f"{mode}-{index}", request,
+                    {"mode": mode, "origin": origin, "originAt": request["launchDatetime"], "telemetryId": None}, at,
+                    expected_request=wire)
+                session.add(PredictionAttemptRow(id=f"{mode}-{index}", mission_id="test-flight", requested_at=at,
+                    next_allowed_at=at + timedelta(seconds=60), status="succeeded", raw_request=wire,
+                    raw_response=None, normalized=result, error=None))
+        session.add(PredictionAttemptRow(id="failed-last", mission_id="test-flight", requested_at=created + timedelta(minutes=1),
+            next_allowed_at=created + timedelta(minutes=2), status="failed", raw_request={}, raw_response=None,
+            normalized=None, error="upstream_failure"))
+    reopened = PostgresStore(db_url)
+    try:
+        history = (await reopened.dashboard("test-flight"))["predictionHistory"]
+        assert {p["id"] for p in history} == {"planned-2", "planned-1", "ascending-2", "ascending-1"}
+        assert {p["id"] for p in await reopened.prediction_history("test-flight")} == {p["id"] for p in history}
+    finally:
+        await reopened.close()
+
+
 async def test_planned_prediction_commits_before_publication_and_survives_restart(store, db_url):
     provider = synthetic_provider()
     publisher = AsyncMock()

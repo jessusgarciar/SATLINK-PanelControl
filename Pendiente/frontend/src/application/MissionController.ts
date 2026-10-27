@@ -15,6 +15,8 @@ import type {
   PredictionParameters,
 } from '../domain/mission.ts'
 import type { MissionGateway } from './ports.ts'
+import { mergePredictionHistory } from '../domain/predictionWorkspace.ts'
+import type { PredictionMode } from '../domain/predictionWorkspace.ts'
 
 export interface MissionState {
   technicalLog: { id: number; at: string; message: string }[]
@@ -23,6 +25,7 @@ export interface MissionState {
   loading: boolean
   error: string | null
   actionError: string | null
+  predictionActionError: string | null
   commanding: boolean
   predicting: boolean
   paused: boolean
@@ -35,6 +38,7 @@ export class MissionController {
     loading: true,
     error: null,
     actionError: null,
+    predictionActionError: null,
     commanding: false,
     predicting: false,
     paused: false,
@@ -47,6 +51,13 @@ export class MissionController {
   private refreshGeneration = 0
   private logId = 0
   readonly gateway: MissionGateway
+  private predictionDrafts: Partial<Record<PredictionMode, PredictionParameters>> = {}
+  private selectedPredictionMode: PredictionMode = 'planned'
+  getPredictionWorkspace = () => ({ mode: this.selectedPredictionMode, drafts: structuredClone(this.predictionDrafts) })
+  savePredictionDraft = (mode: PredictionMode, parameters: PredictionParameters) => {
+    this.predictionDrafts[mode] = structuredClone(parameters)
+  }
+  selectPredictionMode = (mode: PredictionMode) => { this.selectedPredictionMode = mode }
   constructor(gateway: MissionGateway) {
     this.gateway = gateway
   }
@@ -150,6 +161,7 @@ export class MissionController {
           ...incoming,
           mission,
           prediction,
+          predictionHistory: mergePredictionHistory(same?.predictionHistory ?? [], incoming.predictionHistory ?? [], [same?.prediction, incoming.prediction]),
           ingestion: same?.ingestion && (!incoming.ingestion || Date.parse(same.ingestion.updatedAt) > Date.parse(incoming.ingestion.updatedAt)) ? same.ingestion : incoming.ingestion,
           telemetry: mergeTelemetry(same?.telemetry ?? [], incoming.telemetry, mission.id),
           commands: mergeCommands(same?.commands ?? [], incoming.commands, mission.id),
@@ -202,11 +214,12 @@ export class MissionController {
           snapshot = { ...old, mission: message.data }
         break
       case 'prediction':
+        snapshot = { ...old, predictionHistory: mergePredictionHistory(old.predictionHistory ?? [], [old.prediction, message.data]) }
         if (
           !old.prediction ||
           Date.parse(message.data.generatedAt) >= Date.parse(old.prediction.generatedAt)
         )
-          snapshot = { ...old, prediction: message.data }
+          snapshot = { ...snapshot, prediction: message.data }
         break
     }
     this.update({ snapshot })
@@ -216,6 +229,7 @@ export class MissionController {
     this.update({ paused })
   }
   clearActionError = () => this.update({ actionError: null })
+  clearPredictionError = () => this.update({ predictionActionError: null })
   recordTechnical = (message: string) => {
     if (this.state.technicalLog[0]?.message === message) return
     this.update({ technicalLog: [{ id: ++this.logId, at: new Date().toISOString(), message }, ...this.state.technicalLog].slice(0, 100) })
@@ -244,12 +258,15 @@ export class MissionController {
     if (
       type === 'RELEASE_NOW' &&
       (!actionConfirmed ||
-        s.mission.phase !== 'ascending' ||
-        s.commands.some((c) => c.type === type && !['rejected', 'expired'].includes(c.status)))
+        (s.mission.telemetryProtocol !== 'radiosonda-meca-v1' && s.mission.phase !== 'ascending') ||
+        s.commands.some((c) => c.type === type && (s.mission.telemetryProtocol === 'radiosonda-meca-v1'
+          ? ['pending', 'sent', 'received'].includes(c.status) : !['rejected', 'expired'].includes(c.status))))
     ) {
       this.update({
         actionError:
-          'La liberación requiere confirmación, fase de ascenso y ausencia de otra solicitud activa.',
+          s.mission.telemetryProtocol === 'radiosonda-meca-v1'
+            ? 'El corte requiere confirmación y ausencia de otra solicitud activa.'
+            : 'La liberación requiere confirmación, fase de ascenso y ausencia de otra solicitud activa.',
       })
       return false
     }
@@ -285,11 +302,11 @@ export class MissionController {
       unavailable
     ) {
       this.update({
-        actionError: unavailable ?? 'Predicción no disponible para estos parámetros, permisos o conexión.',
+        predictionActionError: unavailable ?? 'Predicción no disponible para estos parámetros, permisos o conexión.',
       })
       return false
     }
-    this.update({ predicting: true, actionError: null })
+    this.update({ predicting: true, predictionActionError: null })
     const generation = this.generation
     try {
       const prediction = await this.gateway.predict(parameters, s.csrfToken)
@@ -298,7 +315,7 @@ export class MissionController {
     } catch (error) {
       if (generation === this.generation)
         this.update({
-          actionError:
+          predictionActionError:
             error instanceof Error
               ? error.message
               : 'No se pudo actualizar la predicción. Se conserva la anterior.',

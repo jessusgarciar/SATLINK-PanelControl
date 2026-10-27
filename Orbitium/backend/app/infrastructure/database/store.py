@@ -239,6 +239,7 @@ class PostgresStore:
                                 "applicationName": mission.snapshot.get("applicationName") or observed_name or mission.configuration.get("applicationName"),
                                 "plannedLaunchAt": mission.configuration.get("plannedLaunchAt")}, "telemetry": list(reversed(samples)),
                     "commands": list(commands), "events": [], "prediction": prediction,
+                    "predictionHistory": await self._prediction_history(session, mission_id),
                     "permissions": {"canCommand": False, "canPredict": False}, "csrfToken": None,
                     "predictionSettings": {"enabled": False, "launchAltitudeReference": "unknown",
                                            "gpsAltitudeReference": "unknown", "nextAllowedAt": iso(next_allowed)},
@@ -414,6 +415,21 @@ class PostgresStore:
             return await session.scalar(select(PredictionAttemptRow.normalized).where(
                 PredictionAttemptRow.mission_id == mission_id, PredictionAttemptRow.status == "succeeded"
             ).order_by(PredictionAttemptRow.requested_at.desc(), PredictionAttemptRow.id.desc()).limit(1))
+
+    async def _prediction_history(self, session, mission_id: str) -> list[JsonObject]:
+        history = []
+        for mode in ("planned", "ascending"):
+            rows = await session.scalars(select(PredictionAttemptRow.normalized).where(
+                PredictionAttemptRow.mission_id == mission_id,
+                PredictionAttemptRow.status == "succeeded",
+                PredictionAttemptRow.normalized["context"]["mode"].as_string() == mode,
+            ).order_by(PredictionAttemptRow.requested_at.desc(), PredictionAttemptRow.id.desc()).limit(2))
+            history.extend(rows.all())
+        return history
+
+    async def prediction_history(self, mission_id: str) -> list[JsonObject]:
+        async with self.sessions() as session:
+            return await self._prediction_history(session, mission_id)
 
     async def prediction_next_allowed_at(self, mission_id: str) -> datetime | None:
         async with self.sessions() as session:

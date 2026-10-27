@@ -21,7 +21,7 @@ export class HttpMissionGateway implements MissionGateway {
     this.missionId = missionId
   }
   private async request(path: string, options: RequestInit = {}): Promise<unknown> {
-    const timeout = AbortSignal.timeout(12000)
+    const timeout = AbortSignal.timeout(path === '/predictions' ? 35000 : 12000)
     const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout
     try {
       const response = await fetch(this.base + path, {
@@ -45,7 +45,7 @@ export class HttpMissionGateway implements MissionGateway {
           ? await response.json().catch(() => null) : null
         const detail = body && typeof body === 'object' && 'detail' in body ? body.detail : null
         throw new Error(
-          ([409, 422].includes(response.status) && typeof detail === 'string' && detail.trim() ? detail : null) ??
+          ([409, 422, 429, 502, 504].includes(response.status) && typeof detail === 'string' && detail.trim() ? detail : null) ??
           messages[response.status] ?? 'El servidor respondió con error ' + response.status + '.',
         )
       }
@@ -137,6 +137,10 @@ export class HttpMissionGateway implements MissionGateway {
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken ?? '' },
         body: JSON.stringify({
           mode: parameters.mode,
+          ...(parameters.mode === 'ascending' ? {
+            ...(parameters.launchAltitudeReference ? { launchAltitudeReference: parameters.launchAltitudeReference } : {}),
+            ...(parameters.gpsAltitudeReference ? { gpsAltitudeReference: parameters.gpsAltitudeReference } : {}),
+          } : {}),
           ...(parameters.mode === 'planned' ? { launchDatetime: parameters.launchDatetime,
             ...(parameters.launch ? { launch: parameters.launch, launchAltitudeReference: parameters.launchAltitudeReference } : {}),
           } : {}),

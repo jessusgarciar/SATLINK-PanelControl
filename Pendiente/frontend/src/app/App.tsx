@@ -23,7 +23,7 @@ export default function App() {
           ? new DemoMissionGateway(import.meta.env.VITE_DEMO_PREDICTION === 'tawhiri')
           : new HttpMissionGateway(
               import.meta.env.VITE_API_BASE_URL ?? '/api/v1',
-              import.meta.env.VITE_MISSION_ID ?? 'system',
+              import.meta.env.VITE_MISSION_ID ?? 'system-meca',
             ),
       ),
     [mode],

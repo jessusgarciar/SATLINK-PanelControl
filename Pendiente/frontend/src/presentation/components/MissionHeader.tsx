@@ -1,6 +1,7 @@
 import { lazy, memo, Suspense, useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
-import type { Mission, MissionParameters } from '../../domain/mission.ts'
+import type { MissionGateway } from '../../application/ports.ts'
+import type { Mission, MissionParameters, Telemetry } from '../../domain/mission.ts'
 import { duration } from '../format.ts'
 import { useMediaQuery } from '../hooks/useMediaQuery.ts'
 import CardNav from './react-bits/CardNav.tsx'
@@ -35,9 +36,10 @@ const HeaderAurora = memo(function HeaderAurora() {
   </div>
 })
 
-export default function MissionHeader({ mission, elapsed, mode, onModeChange, deviceOnline, mapSettings, onSaveParameters }: {
+export default function MissionHeader({ mission, elapsed, mode, onModeChange, deviceOnline, mapSettings, onSaveParameters, gateway, samples }: {
   mission: Mission | undefined; elapsed: number | null; mode: 'demo' | 'live'; onModeChange: (mode: 'demo' | 'live') => void
   deviceOnline: boolean; onSaveParameters: (parameters: MissionParameters) => Promise<void>
+  gateway: MissionGateway; samples: Telemetry[]
   mapSettings: MapSettings
 }) {
   const [informationOpen, setInformationOpen] = useState(false)
@@ -57,6 +59,6 @@ export default function MissionHeader({ mission, elapsed, mode, onModeChange, de
         menuFooter={<InstitutionLogos />}
         logoAlt="SATLINK / system, ir al resumen" logoHref="#mission-summary" />
     </div>
-    {informationOpen && <MissionInformation key={mode + ':' + (mission?.id ?? '')} mission={mission} demo={mode === 'demo'} online={deviceOnline} mapSettings={mapSettings} onSave={onSaveParameters} onClose={() => setInformationOpen(false)} />}
+    {informationOpen && <MissionInformation key={mode + ':' + (mission?.id ?? '')} gateway={gateway} samples={samples} mission={mission} demo={mode === 'demo'} online={deviceOnline} mapSettings={mapSettings} onSave={onSaveParameters} onClose={() => setInformationOpen(false)} />}
   </header>
 }

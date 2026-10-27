@@ -18,6 +18,7 @@ from app.domain.entities.commands import CommandConflict, COMMAND_TYPES
 from app.domain.entities.prediction import PredictionCooldown
 from app.infrastructure.mqtt.metadata import enrich_telemetry
 from app.application.use_cases.query_telemetry import interval
+from app.domain.entities.radiosonda import flight_state, command_result
 
 
 def iso(value: datetime | None) -> str | None:
@@ -118,6 +119,11 @@ class PostgresStore:
                     for key in ("applicationName", "plannedLaunchAt"):
                         previous.setdefault(key, None)
                         requested.setdefault(key, None)
+                    for key, default in (("telemetryProtocol", "legacy"), ("altitudeTargetMode", "relative")):
+                        previous.setdefault(key, default)
+                        requested.setdefault(key, default)
+                        previous.pop(key)
+                        requested.pop(key)
                     previous.pop("applicationName", None)
                     requested.pop("applicationName", None)
                     previous.pop("staleAfterSeconds", None)
@@ -127,6 +133,8 @@ class PostgresStore:
                             "La misión existe con otra configuración; no se modificó su origen")
                     row.configuration = config
                     row.snapshot = {**row.snapshot, "staleAfterSeconds": requested_staleness,
+                                    "telemetryProtocol": config.get("telemetryProtocol", "legacy"),
+                                    "altitudeTargetMode": config.get("altitudeTargetMode", "relative"),
                                     "applicationName": config.get("applicationName"),
                                     "updatedAt": datetime.now(timezone.utc).isoformat()}
                 return row.snapshot
@@ -147,12 +155,39 @@ class PostgresStore:
                 deduplication_id=event.deduplication_id, received_at=event.received_at,
                 ingested_at=datetime.now(timezone.utc), status="accepted", reason=None,
                 raw_payload=event.raw_payload,
-                details={"codec": event.metadata, "event": event.raw_event, "provenance": "chirpstack"},
+                details={"codec": event.metadata, "measurements": event.measurements,
+                         "event": event.raw_event, "provenance": "chirpstack"},
             ).on_conflict_do_nothing(constraint="uq_received_event").returning(ReceivedEventRow.id))
             if inserted is None:
                 return False
-            session.add(TelemetryRow(id=telemetry["id"], mission_id=mission.id,
-                                      received_at=event.received_at, data=telemetry))
+            packet = telemetry.get("packet")
+            control = packet and packet["fPort"] in (30, 31)
+            if not control:
+                session.add(TelemetryRow(id=telemetry["id"], mission_id=mission.id,
+                                          received_at=event.received_at, data=dict(telemetry)))
+            if packet and packet["fPort"] in (23, 30, 31):
+                row = await session.scalar(select(MissionRow).where(MissionRow.id == mission.id).with_for_update())
+                if packet["fPort"] in (23, 31):
+                    state = flight_state(row.snapshot.get("flightState"), packet, event.received_at)
+                    row.snapshot = {**row.snapshot, "flightState": state, "updatedAt": datetime.now(timezone.utc).isoformat()}
+                if control and (packet["fPort"] == 30 or packet.get("motivo") == "downlink"):
+                    kind = "PING" if packet["fPort"] == 30 else "RELEASE_NOW"
+                    candidates = (await session.scalars(select(CommandRow).where(
+                        CommandRow.mission_id == mission.id, CommandRow.kind == kind,
+                        CommandRow.created_at <= event.received_at,
+                        CommandRow.created_at >= event.received_at - timedelta(minutes=15),
+                        CommandRow.status.in_(("pending", "sent", "received")),
+                        CommandRow.data["seq"].as_integer() == packet["seq"]))).all()
+                    if len(candidates) == 1:
+                        command = candidates[0]
+                        status, evidence, result = command_result(packet, command.created_at, event.received_at)
+                        prior = command.data.get("feedbackAt")
+                        if prior is None or datetime.fromisoformat(prior) < event.received_at:
+                            command.status = status
+                            command.data = {**command.data, "status": status, "evidence": evidence,
+                                            "result": result, "feedbackAt": event.received_at.isoformat(),
+                                            "updatedAt": datetime.now(timezone.utc).isoformat()}
+                            telemetry["_commandUpdates"] = [command.data]
             name = observed_application_name(event.raw_event)
             if name and mission.snapshot.get("applicationName") != name:
                 row = await session.scalar(select(MissionRow).where(MissionRow.id == mission.id).with_for_update())
@@ -166,9 +201,12 @@ class PostgresStore:
         return True
 
     async def reject(self, source: str, topic: str, payload: bytes, reason: str) -> None:
+        # Asociar únicamente a la identidad del topic; el JSON rechazado no es confiable.
+        match = re.fullmatch(r"application/([^/+#]+)/device/([0-9a-fA-F]{16})/event/up", topic)
+        mission = await self.find_mission(source, match[1], match[2].lower()) if match else None
         async with self.sessions.begin() as session:
             session.add(ReceivedEventRow(
-                id=str(uuid4()), source=source, mission_id=None, dev_eui=None, deduplication_id=None,
+                id=str(uuid4()), source=source, mission_id=mission.id if mission else None, dev_eui=match[2].lower() if match else None, deduplication_id=None,
                 received_at=None, ingested_at=datetime.now(timezone.utc), status="rejected",
                 reason=reason[:512], raw_payload=payload[:262144],
                 details={"topic": topic[:1024], "originalSize": len(payload), "truncated": len(payload) > 262144},
@@ -177,10 +215,13 @@ class PostgresStore:
     async def dashboard(self, mission_id: str, limit: int = 1200) -> JsonObject:
         if not 1 <= limit <= 1200:
             raise ValueError("limit debe estar entre 1 y 1200")
-        async with self.sessions() as session:
+        async with self.sessions.begin() as session:
             mission = await session.get(MissionRow, mission_id)
             if mission is None:
                 raise MissionNotFound(mission_id)
+            if mission.snapshot.get("telemetryProtocol") == "radiosonda-meca-v1":
+                await session.refresh(mission, with_for_update=True)
+                await self._expire_radio_commands(session, mission_id, datetime.now(timezone.utc))
             rows = (await session.execute(filtered_rows(mission_id, None, None).order_by(
                 TelemetryRow.received_at.desc(), TelemetryRow.id.desc()).limit(limit))).all()
             samples = [enrich_telemetry(data, details) for data, details, _ in rows]
@@ -198,11 +239,57 @@ class PostgresStore:
                                 "applicationName": mission.snapshot.get("applicationName") or observed_name or mission.configuration.get("applicationName"),
                                 "plannedLaunchAt": mission.configuration.get("plannedLaunchAt")}, "telemetry": list(reversed(samples)),
                     "commands": list(commands), "events": [], "prediction": prediction,
+                    "predictionHistory": await self._prediction_history(session, mission_id),
                     "permissions": {"canCommand": False, "canPredict": False}, "csrfToken": None,
                     "predictionSettings": {"enabled": False, "launchAltitudeReference": "unknown",
                                            "gpsAltitudeReference": "unknown", "nextAllowedAt": iso(next_allowed)},
                     "ingestion": {"source": mission.source, "status": "disabled",
                                   "updatedAt": datetime.now(timezone.utc).isoformat()}}
+
+    async def packets(self, mission_id: str, cursor: str | None = None, limit: int = 50) -> JsonObject:
+        if not 1 <= limit <= 100:
+            raise ValueError("Límite de paquetes inválido")
+        async with self.sessions() as session:
+            if await session.get(MissionRow, mission_id) is None:
+                raise MissionNotFound(mission_id)
+            query = select(ReceivedEventRow).where(ReceivedEventRow.mission_id == mission_id)
+            if cursor:
+                try:
+                    stamp, identifier = json.loads(base64.urlsafe_b64decode(cursor).decode())
+                    stamp = datetime.fromisoformat(stamp)
+                    if stamp.tzinfo is None:
+                        raise ValueError()
+                    identifier = str(UUID(identifier))
+                except (ValueError, TypeError, binascii.Error, UnicodeError) as exc:
+                    raise ValueError("Cursor de paquetes inválido") from exc
+                query = query.where(tuple_(ReceivedEventRow.ingested_at, ReceivedEventRow.id) < tuple_(stamp, identifier))
+            rows = (await session.scalars(query.order_by(ReceivedEventRow.ingested_at.desc(), ReceivedEventRow.id.desc()).limit(limit + 1))).all()
+            page = rows[:limit]
+            items = []
+            for row in page:
+                raw = row.details.get("event")
+                if raw is None:
+                    try:
+                        raw = json.loads(row.raw_payload)
+                    except (ValueError, UnicodeError):
+                        raw = {"unparsedText": row.raw_payload.decode("utf-8", errors="replace")}
+                items.append({"id": row.id, "receivedAt": iso(row.received_at), "ingestedAt": iso(row.ingested_at),
+                    "status": row.status, "reason": row.reason, "decoded": {**row.details.get("measurements", {}), **row.details.get("codec", {})},
+                    "raw": archive_response(raw) if isinstance(raw, dict) else {"value": str(raw)},
+                    "rawBase64": base64.b64encode(row.raw_payload).decode()})
+            last = page[-1] if len(rows) > limit else None
+            next_cursor = base64.urlsafe_b64encode(json.dumps([iso(last.ingested_at), last.id]).encode()).decode() if last else None
+            return {"items": items, "nextCursor": next_cursor}
+
+    async def _expire_radio_commands(self, session: AsyncSession, mission_id: str, now: datetime) -> None:
+        expired = (await session.scalars(select(CommandRow).where(CommandRow.mission_id == mission_id,
+            CommandRow.status.in_(("pending", "sent", "received")),
+            CommandRow.created_at < now - timedelta(minutes=15)))).all()
+        for old in expired:
+            old.status = "expired"
+            old.data = {**old.data, "status": "expired", "updatedAt": iso(now),
+                        "evidence": "Ventana de respuesta agotada; ejecución no confirmada. Sin reenvío automático."}
+        await session.flush()
 
     async def reserve_command(self, mission_id: str, request_id: str, kind: str,
                               now: datetime) -> tuple[JsonObject, bool]:
@@ -220,6 +307,8 @@ class PostgresStore:
                 return previous.data, False
             if kind == "START_MISSION" and mission.snapshot.get("startedAt"):
                 raise CommandConflict("La misión ya está iniciada; no se reinició el watchdog")
+            if mission.snapshot.get("telemetryProtocol") == "radiosonda-meca-v1":
+                await self._expire_radio_commands(session, mission_id, now)
             active = await session.scalar(select(CommandRow.id).where(CommandRow.mission_id == mission_id,
                 CommandRow.kind == kind, CommandRow.status.in_(("pending", "sent", "received"))).limit(1))
             if active:
@@ -233,6 +322,17 @@ class PostgresStore:
                     "status": "pending", "createdAt": iso(now), "updatedAt": iso(now),
                     "evidence": "Solicitud persistida; todavía no confirma recepción ni ejecución.", "simulated": False,
                     "watchdogSeconds": mission.snapshot["watchdogSeconds"]}
+            if mission.snapshot.get("telemetryProtocol") == "radiosonda-meca-v1":
+                if kind not in ("PING", "RELEASE_NOW"):
+                    raise CommandConflict("MECA admite Marco y corte; el inicio es autónomo")
+                if kind == "RELEASE_NOW" and (latest is None or not -5 <= (now - latest).total_seconds() <= mission.snapshot["staleAfterSeconds"]):
+                    raise CommandConflict("El corte requiere telemetría reciente de esta radiosonda")
+                recent = (await session.scalars(select(CommandRow).where(CommandRow.mission_id == mission_id))).all()
+                used = {c.data.get("seq") for c in recent}
+                available = next((s for s in range(1, 256) if s not in used), None)
+                if available is None:
+                    raise CommandConflict("Secuencias agotadas para esta misión; no se reutilizó ninguna")
+                data["seq"] = available
             session.add(CommandRow(id=identifier, mission_id=mission_id, client_request_id=request_id,
                 kind=kind, status="pending", created_at=now, data=data))
         return data, True
@@ -270,9 +370,12 @@ class PostgresStore:
         return data, updated_mission
 
     async def prediction_context(self, mission_id: str) -> JsonObject:
-        snapshot = await self.dashboard(mission_id, 1)
+        snapshot = await self.dashboard(mission_id, 1200)
+        samples = snapshot["telemetry"]
+        latest = next((s for s in reversed(samples) if not s.get("packet") or
+                       "latitude" in s["packet"].get("presentFields", [])), None)
         return {"mission": snapshot["mission"],
-                "telemetry": snapshot["telemetry"][-1] if snapshot["telemetry"] else None}
+                "telemetry": latest}
 
     async def reserve_prediction(self, mission_id: str, request: JsonObject, now: datetime) -> str:
         attempt_id = str(uuid4())
@@ -312,6 +415,21 @@ class PostgresStore:
             return await session.scalar(select(PredictionAttemptRow.normalized).where(
                 PredictionAttemptRow.mission_id == mission_id, PredictionAttemptRow.status == "succeeded"
             ).order_by(PredictionAttemptRow.requested_at.desc(), PredictionAttemptRow.id.desc()).limit(1))
+
+    async def _prediction_history(self, session, mission_id: str) -> list[JsonObject]:
+        history = []
+        for mode in ("planned", "ascending"):
+            rows = await session.scalars(select(PredictionAttemptRow.normalized).where(
+                PredictionAttemptRow.mission_id == mission_id,
+                PredictionAttemptRow.status == "succeeded",
+                PredictionAttemptRow.normalized["context"]["mode"].as_string() == mode,
+            ).order_by(PredictionAttemptRow.requested_at.desc(), PredictionAttemptRow.id.desc()).limit(2))
+            history.extend(rows.all())
+        return history
+
+    async def prediction_history(self, mission_id: str) -> list[JsonObject]:
+        async with self.sessions() as session:
+            return await self._prediction_history(session, mission_id)
 
     async def prediction_next_allowed_at(self, mission_id: str) -> datetime | None:
         async with self.sessions() as session:

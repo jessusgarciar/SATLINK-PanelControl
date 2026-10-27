@@ -57,5 +57,5 @@ test('controller enforces real cooldown in demo before sending another provider 
   await controller.refresh()
   assert.equal(await controller.predict({ ...gateway.defaults(), mode: 'ascending' }), false)
   assert.equal(calls, 0)
-  assert.match(controller.getSnapshot().actionError, /Espera/)
+  assert.match(controller.getSnapshot().predictionActionError, /Espera/)
 })

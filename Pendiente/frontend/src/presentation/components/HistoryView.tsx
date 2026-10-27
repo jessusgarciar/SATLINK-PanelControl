@@ -48,7 +48,7 @@ export default function HistoryView({ gateway, snapshot, range, settings, onClos
       {!state.samples.length && !state.loading && !state.error && <p className="archive-caption">No hay muestras en el intervalo seleccionado.</p>}
       <Suspense fallback={<p>Cargando mapa y gráficas…</p>}>
         <div className="history-map"><MissionMap snapshot={historical} settings={settings} overview /></div>
-        <TelemetryCharts samples={decimate(state.samples, 600)} />
+        <TelemetryCharts samples={decimate(state.samples, 600)} protocol={snapshot.mission.telemetryProtocol} />
       </Suspense>
     </div>
   </Dialog>

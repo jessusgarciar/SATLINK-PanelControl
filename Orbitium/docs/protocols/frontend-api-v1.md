@@ -41,6 +41,7 @@ La definición completa y tipada está en `frontend/src/domain/mission.ts`. `das
 | `commands`    | Historial reciente de comandos y sus evidencias                        |
 | `events`      | Eventos de misión, incluida liberación física cuando se confirme       |
 | `prediction`  | Última predicción válida, o `null`                                     |
+| `predictionHistory` | Hasta dos resultados exitosos de cada modo (máximo cuatro); campo aditivo, opcional para clientes antiguos |
 | `predictionSettings` | Habilitación, referencias de altitud y próximo instante permitido de consulta |
 | `permissions` | `canCommand` y `canPredict`, booleanos derivados de la sesión          |
 | `csrfToken`   | Token de sesión para POST o `null` cuando no corresponda               |
@@ -161,7 +162,7 @@ El POST exige `mode` (`planned` o `ascending`) y las tres entradas numéricas: o
 }
 ```
 
-El origen manual pertenece únicamente a ese cálculo; no cambia `mission.launch`, su datum configurado, `startedAt` ni la telemetría. Su objetivo absoluto es `launch.altitudeM + targetRelativeAltitudeM`: en el ejemplo, 17000 m. El perfil `ascending` prohíbe los campos de origen manual y sigue partiendo del último GPS válido y reciente, con el objetivo absoluto referido al lanzamiento persistente de misión y por encima de la altitud GPS. Usa `receivedAt` como aproximación temporal porque el perfil PICARO no contiene hora GPS de medición. No convierte el último paquete en punto de lanzamiento.
+El origen manual pertenece únicamente a ese cálculo; no cambia `mission.launch`, su datum configurado, `startedAt` ni la telemetría. Su objetivo absoluto es `launch.altitudeM + targetRelativeAltitudeM`: en el ejemplo, 17000 m. El perfil `ascending` prohíbe las coordenadas manuales (`launch`) y `launchDatetime` y sigue partiendo del último GPS válido y reciente, con el objetivo absoluto referido al lanzamiento persistente de misión y por encima de la altitud GPS. Usa `receivedAt` como aproximación temporal porque el perfil PICARO no contiene hora GPS de medición. No convierte el último paquete en punto de lanzamiento.
 
 Elegir un modo expresa un perfil de cálculo del operador; no confirma fase física ni cambia `mission.phase=unknown`. Las fases confirmadas de descenso/aterrizaje no admiten este perfil estándar. Tampoco se envía un comando de liberación por solicitar una predicción.
 
@@ -184,6 +185,14 @@ En la predicción local: HTTP 403 para predictor deshabilitado/origen/CSRF invá
 Para la futura sesión/telecomando se prevén HTTP 401 para sesión ausente y 409 para comandos incompatibles. El cliente también maneja 5xx, desconexión, respuestas HTML y timeouts de 12 s. Un error al refrescar el snapshot deja los datos visibles y deshabilita escrituras hasta recuperar permisos válidos.
 
 En producción servir `frontend/dist` y `/api` bajo el mismo origen HTTPS; el reverse proxy debe soportar upgrade WebSocket. El proxy de Vite solo es para desarrollo. El backend debe permitir el origen de desarrollo explícitamente y verificar cookies/CSRF con ese esquema. El frontend no instala servicios ni cambia configuración de PostgreSQL.
+
+### Selector integrado y referencias explícitas en Ascenso
+
+La interfaz usa un selector Planificación/Ascenso en una sola pantalla. Los campos y resultados de cada modo se mantienen separados. `predictionHistory` añade al dashboard los dos últimos éxitos de cada modo, hasta cuatro resultados, conservando `prediction` como el último éxito global para compatibilidad. No incluye intentos fallidos. La sesión demo devuelve el mismo campo.
+
+En `ascending`, se aceptan opcionalmente `launchAltitudeReference="MSL"` y `gpsAltitudeReference="MSL"`. Son declaraciones explícitas del operador aplicables a esa consulta, se conservan en `parameters` y no modifican la configuración de estación. La omisión de cualquiera de ellas exige que esa referencia esté configurada como MSL en la estación. No permiten sustituir coordenadas GPS por coordenadas manuales ni convierten altitudes elipsoidales. La muestra GPS debe seguir siendo válida y reciente.
+
+Los errores HTTP del proveedor se devuelven como 502 con un `detail` seguro que incluye el código externo (por ejemplo HTTP 402 o 429), sin incluir su cuerpo. La espera local devuelve 429 y conserva los encabezados de cadencia existentes. Los errores de predicción se muestran separados de los errores de comandos.
 
 ## Predicción real desde la demostración
 

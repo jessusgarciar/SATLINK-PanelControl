@@ -1,5 +1,5 @@
 {
-  "id": "system",
+  "id": "system-meca",
   "name": "system",
   "source": "chirpstack-local",
   "applicationId": "REEMPLAZAR_APPLICATION_ID",
@@ -14,6 +14,8 @@
   "nominalAscentMs": null,
   "nominalDescentMs": null,
   "watchdogSeconds": null,
-  "staleAfterSeconds": null,
-  "region": "US915"
+  "staleAfterSeconds": 1200,
+  "region": "US915",
+  "telemetryProtocol": "radiosonda-meca-v1",
+  "altitudeTargetMode": "absolute"
 }

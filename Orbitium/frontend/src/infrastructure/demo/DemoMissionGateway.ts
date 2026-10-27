@@ -123,6 +123,7 @@ export class DemoMissionGateway implements MissionGateway {
         this.data.predictionSettings = { enabled: session.enabled, launchAltitudeReference: 'MSL',
           gpsAltitudeReference: 'MSL', nextAllowedAt: session.nextAllowedAt }
         this.data.prediction = session.prediction
+        this.data.predictionHistory = session.predictionHistory
         this.data.predictionError = session.enabled ? null : 'Habilita SATLINK_DEMO_PREDICTION_ENABLED en el backend.'
       } catch (error) {
         if (signal.aborted) throw error

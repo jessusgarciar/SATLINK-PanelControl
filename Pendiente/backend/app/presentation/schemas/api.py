@@ -1,4 +1,5 @@
 from typing import Annotated, Literal
+from typing import Any
 from pydantic import Field, field_validator
 from app.presentation.schemas.uplink import utc_time
 from app.presentation.schemas.base import DTO, Position
@@ -7,6 +8,8 @@ from app.presentation.schemas.commands import CommandDTO, CommandSettingsDTO
 
 
 class MissionConfig(DTO):
+    telemetryProtocol: Literal["legacy", "radiosonda-meca-v1"] = "legacy"
+    altitudeTargetMode: Literal["relative", "absolute"] = "relative"
     id: Annotated[str, Field(pattern=r"^[a-zA-Z0-9_-]{1,128}$")]
     name: Annotated[str, Field(min_length=1, max_length=256)]
     applicationName: Annotated[str, Field(min_length=1, max_length=256)] | None = None
@@ -20,7 +23,7 @@ class MissionConfig(DTO):
     nominalAscentMs: Annotated[float, Field(ge=1, le=10)]
     nominalDescentMs: Annotated[float, Field(ge=1, le=15)]
     watchdogSeconds: Annotated[int, Field(ge=1, le=86400)]
-    staleAfterSeconds: Annotated[int, Field(ge=1, le=3600)]
+    staleAfterSeconds: Annotated[int, Field(ge=1, le=86400)]
     region: Literal["US915"] = "US915"
 
     @field_validator("deviceEui")
@@ -47,6 +50,9 @@ class MissionParameters(DTO):
 
 
 class MissionDTO(DTO):
+    telemetryProtocol: Literal["legacy", "radiosonda-meca-v1"] = "legacy"
+    altitudeTargetMode: Literal["relative", "absolute"] = "relative"
+    flightState: dict[str, Any] | None = Field(default=None, exclude_if=lambda value: value is None)
     id: str
     name: str
     applicationId: str | None = None
@@ -69,6 +75,7 @@ class MissionDTO(DTO):
 
 
 class TelemetryDTO(DTO):
+    packet: dict[str, Any] | None = Field(default=None, exclude_if=lambda value: value is None)
     id: str
     missionId: str
     receivedAt: str
@@ -80,7 +87,7 @@ class TelemetryDTO(DTO):
     altitudeBarometricM: None
     verticalSpeedMs: Annotated[float, Field(ge=-200, le=200)] | None
     temperatureC: Annotated[float, Field(ge=-127, le=127)] | None
-    pressureHpa: Annotated[float, Field(ge=5, le=1270)] | None
+    pressureHpa: Annotated[float, Field(ge=0, le=1270)] | None
     humidityPct: Annotated[float, Field(ge=0, le=100)] | None
     batteryV: Annotated[float, Field(ge=0, le=5.08)] | None
     rssiDbm: Annotated[float, Field(ge=-200, le=20)] | None
@@ -135,6 +142,7 @@ class DashboardDTO(DTO):
     commandSettings: CommandSettingsDTO = Field(default_factory=CommandSettingsDTO)
     events: Annotated[list, Field(max_length=0)] = Field(default_factory=list)
     prediction: "PredictionDTO | None" = None
+    predictionHistory: Annotated[list[PredictionDTO], Field(max_length=4)] = Field(default_factory=list)
     permissions: Permissions = Field(default_factory=Permissions)
     csrfToken: str | None = None
     ingestion: IngestionDTO | None = None
@@ -152,3 +160,19 @@ class WindowDTO(DTO):
     total: Annotated[int, Field(ge=0)]
     series: Annotated[list[TelemetryDTO], Field(max_length=600)]
     track: Annotated[list[TelemetryDTO], Field(max_length=500)]
+
+
+class PacketDTO(DTO):
+    id: str
+    receivedAt: str | None
+    ingestedAt: str
+    status: Literal["accepted", "rejected"]
+    reason: str | None
+    decoded: dict[str, Any]
+    raw: dict[str, Any]
+    rawBase64: str
+
+
+class PacketPageDTO(DTO):
+    items: Annotated[list[PacketDTO], Field(max_length=100)]
+    nextCursor: str | None

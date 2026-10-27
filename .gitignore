@@ -84,3 +84,6 @@ Desktop.ini
 *.njsproj
 *.swp
 *.swo
+
+# Documentación operativa privada del dispositivo
+/Pendiente/docs/radiosonda-meca.md

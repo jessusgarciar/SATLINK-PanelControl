@@ -15,6 +15,17 @@ import type {
   Ingestion,
 } from '../../domain/mission.ts'
 import type { HistoryPage, TelemetryWindow } from '../../domain/history.ts'
+import type { PacketPage } from '../../application/ports.ts'
+
+export function parsePackets(value: unknown): PacketPage {
+  const page = record(value)
+  return { items: array(page.items, value => {
+    const p = record(value)
+    return { id: str(p.id), receivedAt: optionalTimestamp(p.receivedAt), ingestedAt: timestamp(p.ingestedAt),
+      status: oneOf(p.status, ['accepted', 'rejected'] as const), reason: p.reason == null ? null : str(p.reason),
+      decoded: record(p.decoded), raw: record(p.raw), rawBase64: typeof p.rawBase64 === 'string' ? p.rawBase64 : '' }
+  }, 100), nextCursor: page.nextCursor == null ? null : str(page.nextCursor) }
+}
 
 type JsonRecord = Record<string, unknown>
 function record(value: unknown): JsonRecord {
@@ -94,6 +105,9 @@ export function parseMission(value: unknown): Mission {
   const m = record(value)
   return {
     id: str(m.id),
+    telemetryProtocol: m.telemetryProtocol == null ? 'legacy' : oneOf(m.telemetryProtocol, ['legacy', 'radiosonda-meca-v1'] as const),
+    altitudeTargetMode: m.altitudeTargetMode == null ? 'relative' : oneOf(m.altitudeTargetMode, ['relative', 'absolute'] as const),
+    flightState: m.flightState == null ? null : record(m.flightState),
     name: str(m.name),
     applicationId: m.applicationId == null ? null : str(m.applicationId),
     applicationName: m.applicationName == null ? null : str(m.applicationName),
@@ -114,7 +128,7 @@ export function parseMission(value: unknown): Mission {
     nominalAscentMs: between(m.nominalAscentMs, 1, 10),
     nominalDescentMs: between(m.nominalDescentMs, 1, 15),
     watchdogSeconds: between(m.watchdogSeconds, 1, 86400),
-    staleAfterSeconds: between(m.staleAfterSeconds, 1, 3600),
+    staleAfterSeconds: between(m.staleAfterSeconds, 1, 86400),
     deviceEui: str(m.deviceEui),
     region: str(m.region),
     beaconOn: m.beaconOn === null ? null : bool(m.beaconOn),
@@ -131,6 +145,9 @@ export function parseTelemetry(value: unknown): Telemetry {
   const gpsValid = latitude !== null && longitude !== null
   return {
     id: str(t.id),
+    ...(t.packet == null ? {} : { packet: { ...record(t.packet),
+      presentFields: array(record(t.packet).presentFields ?? [], str, 30),
+      presentDeviceFields: array(record(t.packet).presentDeviceFields ?? [], str, 20) } }),
     missionId: str(t.missionId),
     receivedAt: timestamp(t.receivedAt),
     frameCounter,
@@ -142,7 +159,7 @@ export function parseTelemetry(value: unknown): Telemetry {
     verticalSpeedMs: sensor(t.verticalSpeedMs, -200, 200),
     temperatureC: sensor(t.temperatureC, -127, 127),
     humidityPct: sensor(t.humidityPct, 0, 100),
-    pressureHpa: sensor(t.pressureHpa, 5, 1270),
+    pressureHpa: sensor(t.pressureHpa, t.packet == null ? 5 : 0, 1270),
     batteryV: sensor(t.batteryV, 0, 5.08),
     rssiDbm: sensor(t.rssiDbm, -200, 20),
     snrDb: sensor(t.snrDb, -40, 40),
@@ -162,6 +179,8 @@ export function parseCommand(value: unknown): Command {
   const c = record(value)
   return {
     id: str(c.id),
+    seq: optionalInteger(c.seq, 0, 255),
+    result: c.result == null ? null : record(c.result),
     missionId: str(c.missionId),
     clientRequestId: str(c.clientRequestId),
     type: oneOf<CommandType>(c.type, [
@@ -202,6 +221,8 @@ function parameters(value: unknown): PredictionParameters {
     ...(p.mode === undefined ? {} : { mode: oneOf(p.mode, ['planned', 'ascending'] as const) }),
     ...(p.launchDatetime === undefined ? {} : { launchDatetime: timestamp(p.launchDatetime) }),
     ...(p.launch == null ? {} : { launch: position(p.launch), launchAltitudeReference: oneOf(p.launchAltitudeReference, ['MSL'] as const) }),
+    ...(p.mode === 'ascending' && p.launchAltitudeReference != null ? { launchAltitudeReference: oneOf(p.launchAltitudeReference, ['MSL'] as const) } : {}),
+    ...(p.mode === 'ascending' && p.gpsAltitudeReference != null ? { gpsAltitudeReference: oneOf(p.gpsAltitudeReference, ['MSL'] as const) } : {}),
     targetRelativeAltitudeM: num(p.targetRelativeAltitudeM),
     ascentRateMs: num(p.ascentRateMs),
     descentRateMs: num(p.descentRateMs),
@@ -253,16 +274,18 @@ export function parseSnapshot(value: unknown, missionId: string): DashboardSnaps
   const commands = array(s.commands, parseCommand)
   const events = array(s.events, parseEvent)
   const prediction = s.prediction === null ? null : parsePrediction(s.prediction)
+  const predictionHistory = s.predictionHistory == null ? [] : array(s.predictionHistory, parsePrediction, 4)
   const settings = s.predictionSettings == null ? null : record(s.predictionSettings)
   const commandSettings = s.commandSettings == null ? null : record(s.commandSettings)
   if (
-    [...telemetry, ...commands, ...events, ...(prediction ? [prediction] : [])].some(
+    [...telemetry, ...commands, ...events, ...predictionHistory, ...(prediction ? [prediction] : [])].some(
       (item) => item.missionId !== missionId,
     )
   )
     throw new Error('La respuesta contiene datos de otra misión.')
   return {
     mission,
+    predictionHistory,
     ...(commandSettings === null ? {} : { commandSettings: {
       enabled: bool(commandSettings.enabled),
       supportedTypes: array(commandSettings.supportedTypes, (value) => oneOf<CommandType>(value, ['PING', 'STATUS', 'TELEMETRY', 'START_MISSION', 'RELEASE_NOW'])),

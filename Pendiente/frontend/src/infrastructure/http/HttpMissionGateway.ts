@@ -9,6 +9,8 @@ import type {
 import { subscribeMission } from '../websocket/missionStream.ts'
 import { parseCommand, parsePrediction, parseSnapshot, parseHistory, parseWindow, parseMission } from './validation.ts'
 import type { TimeRange } from '../../domain/history.ts'
+import type { PacketPage } from '../../application/ports.ts'
+import { parsePackets } from './validation.ts'
 
 export class HttpMissionGateway implements MissionGateway {
   readonly mode = 'live' as const
@@ -19,7 +21,7 @@ export class HttpMissionGateway implements MissionGateway {
     this.missionId = missionId
   }
   private async request(path: string, options: RequestInit = {}): Promise<unknown> {
-    const timeout = AbortSignal.timeout(12000)
+    const timeout = AbortSignal.timeout(path === '/predictions' ? 35000 : 12000)
     const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout
     try {
       const response = await fetch(this.base + path, {
@@ -43,7 +45,7 @@ export class HttpMissionGateway implements MissionGateway {
           ? await response.json().catch(() => null) : null
         const detail = body && typeof body === 'object' && 'detail' in body ? body.detail : null
         throw new Error(
-          ([409, 422].includes(response.status) && typeof detail === 'string' && detail.trim() ? detail : null) ??
+          ([409, 422, 429, 502, 504].includes(response.status) && typeof detail === 'string' && detail.trim() ? detail : null) ??
           messages[response.status] ?? 'El servidor respondió con error ' + response.status + '.',
         )
       }
@@ -61,6 +63,11 @@ export class HttpMissionGateway implements MissionGateway {
   }
   async load(signal: AbortSignal) {
     return parseSnapshot(await this.request('/dashboard?limit=1200', { signal }), this.missionId)
+  }
+  async packets(cursor: string | null, signal: AbortSignal): Promise<PacketPage> {
+    const query = new URLSearchParams({ limit: '50' })
+    if (cursor) query.set('cursor', cursor)
+    return parsePackets(await this.request('/packets?' + query, { signal }))
   }
   async saveParameters(parameters: MissionParameters, csrfToken: string | null) {
     const mission = parseMission(await this.request('/parameters', {
@@ -130,6 +137,10 @@ export class HttpMissionGateway implements MissionGateway {
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken ?? '' },
         body: JSON.stringify({
           mode: parameters.mode,
+          ...(parameters.mode === 'ascending' ? {
+            ...(parameters.launchAltitudeReference ? { launchAltitudeReference: parameters.launchAltitudeReference } : {}),
+            ...(parameters.gpsAltitudeReference ? { gpsAltitudeReference: parameters.gpsAltitudeReference } : {}),
+          } : {}),
           ...(parameters.mode === 'planned' ? { launchDatetime: parameters.launchDatetime,
             ...(parameters.launch ? { launch: parameters.launch, launchAltitudeReference: parameters.launchAltitudeReference } : {}),
           } : {}),

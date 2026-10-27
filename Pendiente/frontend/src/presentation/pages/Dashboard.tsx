@@ -14,6 +14,7 @@ import { DataCard, Definition, SectionTitle } from '../components/ui.tsx'
 import MissionHeader from '../components/MissionHeader.tsx'
 import MissionSummary from '../components/MissionSummary.tsx'
 import MissionDetails from '../components/MissionDetails.tsx'
+import MecaSensors from '../components/MecaSensors.tsx'
 import MissionLog from '../components/MissionLog.tsx'
 import InstitutionLogos from '../components/InstitutionLogos.tsx'
 
@@ -47,14 +48,16 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
   const age = dataAgeSeconds(latest, now)
   const stale = age === null || age > (mission?.staleAfterSeconds ?? 15)
   const demo = controller.gateway.mode === 'demo'
-  const elapsed = mission?.startedAt
+  const autonomous = mission?.telemetryProtocol === 'radiosonda-meca-v1'
+  const reportedFlightTime = null
+  const elapsed = autonomous ? reportedFlightTime : mission?.startedAt
     ? ((mission.endedAt ? Date.parse(mission.endedAt) : now) - Date.parse(mission.startedAt)) / 1000
     : null
   const progress =
     readings?.relativeAltitudeM != null && mission
       ? Math.max(
           0,
-          Math.min(100, (readings.relativeAltitudeM / mission.targetRelativeAltitudeM) * 100),
+          Math.min(100, ((mission.altitudeTargetMode === 'absolute' ? readings.altitudeGpsM ?? 0 : readings.relativeAltitudeM) / mission.targetRelativeAltitudeM) * 100),
         )
       : null
   const releaseEvent = snapshot?.events.find((event) => event.type === 'release')
@@ -63,7 +66,7 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
       <a className="skip-link" href="#mission-dashboard">
         Saltar al panel de telemetría
       </a>
-      <MissionHeader mission={mission} elapsed={elapsed} mode={controller.gateway.mode} onModeChange={onModeChange} deviceOnline={!stale && state.connection === 'connected' && snapshot?.ingestion?.status === 'connected'} mapSettings={mapSettings} onSaveParameters={controller.saveParameters} />
+      <MissionHeader gateway={controller.gateway} samples={snapshot?.telemetry ?? []} mission={mission} elapsed={elapsed} mode={controller.gateway.mode} onModeChange={onModeChange} deviceOnline={!stale && state.connection === 'connected' && snapshot?.ingestion?.status === 'connected'} mapSettings={mapSettings} onSaveParameters={controller.saveParameters} />
       <main id="mission-dashboard" className="dashboard-shell">
         <div
           className={
@@ -137,15 +140,15 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
             <MissionSummary mission={mission} readings={readings} progress={progress} stale={readingStale('relativeAltitudeM')} observedAt={observedAt.relativeAltitudeM} />
             <section className="metrics-primary" aria-label="Estado de la misión">
               <DataCard
-                label="Tiempo de vuelo"
+                label="Tiempo de misión"
                 value={duration(elapsed)}
-                detail={mission.endedAt ? 'Misión finalizada' : 'Desde el lanzamiento'}
+                detail={autonomous ? (reportedFlightTime === null ? 'Sin tiempo de vuelo reportado' : 'Último tiempo reportado por firmware') : mission.endedAt ? 'Misión finalizada' : mission.startedAt ? 'Desde el inicio confirmado' : 'Pendiente de iniciar misión'}
                 tone="cyan"
               />
               <DataCard
                 label="Watchdog"
                 value={elapsed === null ? '—' : duration(mission.watchdogSeconds - elapsed)}
-                detail="Referencia · timer en firmware"
+                detail={autonomous ? 'No reportado por el perfil MECA' : mission.startedAt ? 'Referencia · timer autónomo en firmware' : 'Pendiente de inicio confirmado'}
                 tone="amber"
               />
               <DataCard
@@ -156,7 +159,7 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
                     : '—'
                 }
                 unit="m/s"
-                detail={readings?.verticalSpeedMs == null ? 'No disponible en la telemetría' : 'Reportada por el dispositivo'}
+                detail="Reportada por el dispositivo"
                 tone={mission.phase === 'descending' ? 'amber' : 'green'}
                 stale={readingStale('verticalSpeedMs')}
               />
@@ -169,7 +172,9 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
                 stale={readingStale('rssiDbm')}
               />
             </section>
-            <section id="mission-sensors" tabIndex={-1} className="metrics-secondary" aria-label="Lecturas de sensores">
+            <section id="mission-sensors" tabIndex={-1} className="panel mission-readings" aria-label="Lecturas de misión">
+              <SectionTitle>Lecturas de misión</SectionTitle>
+              <div className="metrics-secondary">
               <DataCard
                 label="Altitud GPS"
                 value={km(readings?.altitudeGpsM)}
@@ -178,6 +183,7 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
                 tone="cyan"
                 stale={readingStale('altitudeGpsM')}
               />
+              {!autonomous && <>
               <DataCard
                 label="Temp. interna"
                 value={number(readings?.temperatureC)}
@@ -202,6 +208,7 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
                 tone="cyan"
                 stale={readingStale('pressureHpa')}
               />
+              </>}
               <DataCard
                 label="Voltaje batería"
                 value={number(readings?.batteryV, 3)}
@@ -220,6 +227,18 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
                 }
                 stale={stale}
               />
+              {([
+                ['altitudeBarometricM', 'Altitud barométrica', 'm', 'cyan'],
+                ['relativeAltitudeM', 'Altitud relativa', 'm', 'cyan'],
+                ['latitude', 'Latitud GPS', '°', 'blue'],
+                ['longitude', 'Longitud GPS', '°', 'blue'],
+                ['snrDb', 'SNR LoRaWAN', 'dB', 'green'],
+              ] as const).map(([key, label, unit, tone]) => <DataCard key={key}
+                label={label} value={number(readings?.[key], key === 'latitude' || key === 'longitude' ? 5 : 1)}
+                unit={unit} tone={tone} stale={readingStale(key)}
+                detail={observedAt[key] ? 'Recibido ' + clock(observedAt[key]) : 'Sin lectura reportada'} />)}
+              {autonomous && <MecaSensors samples={snapshot.telemetry} now={now} staleAfterSeconds={mission.staleAfterSeconds} />}
+              </div>
             </section>
             <div className="telemetry-layout">
               <div className="position-column">
@@ -244,7 +263,7 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
                 </section>
               </div>
               <Suspense fallback={<div className="panel chart-empty">Cargando gráficas…</div>}>
-                <TelemetryCharts samples={archive.data?.series ?? []} sectionId="mission-charts" />
+                <TelemetryCharts samples={archive.data?.series ?? []} sectionId="mission-charts" protocol={mission.telemetryProtocol} />
               </Suspense>
             </div>
             <MissionDetails mission={mission} readings={readings} demo={demo} />
@@ -260,7 +279,7 @@ export default function Dashboard({ controller, mapSettings, onModeChange }: Das
             <MissionLog entries={state.technicalLog} />
             <ArchiveToolbar gateway={controller.gateway} selected={windowKey} setSelected={(key) => { setWindowKey(key); controller.recordTechnical('Ventana: ' + key) }} range={archive.data} total={archive.data?.total ?? null} seriesCount={archive.data?.series.length ?? 0} trackCount={archive.data?.track.length ?? 0} loading={archive.loading} error={archive.error} onActivity={controller.recordTechnical} openHistory={() => { if (archive.data) { controller.recordTechnical('Reproducción histórica: intervalo fijado · ' + archive.data.to); setReplayRange({ from: archive.data.from, to: archive.data.to }) } }} />
             <footer className="site-footer">
-              <span>SATLINK · system · MISSION DASHBOARD</span>
+              <span>SATLINK · MISSION DASHBOARD</span>
               <span>
                 {demo ? 'SIMULACIÓN' : mission.deviceEui} · LoRaWAN {mission.region} · ChirpStack
               </span>

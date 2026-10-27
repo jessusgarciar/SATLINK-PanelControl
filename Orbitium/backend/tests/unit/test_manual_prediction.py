@@ -41,6 +41,31 @@ def service_doubles():
     return PredictMission(store, provider, publisher), store, provider, publisher, current
 
 
+@pytest.mark.parametrize("up,down", [(6.0, 6.5), (5.0, 8.0)])
+async def test_new_velocity_values_reach_provider_and_are_recorded_in_result(up, down):
+    service, store, provider, publisher, current = service_doubles()
+    body = planned_body(launch=MANUAL_ORIGIN, launchAltitudeReference="MSL", ascentRateMs=up, descentRateMs=down)
+    result = await service.execute("test-flight", body, {})
+    sent = provider.predict.await_args.args[0]
+    assert (sent["ascent_rate"], sent["descent_rate"]) == (up, down)
+    assert (result["parameters"]["ascentRateMs"], result["parameters"]["descentRateMs"]) == (up, down)
+
+
+async def test_ascent_can_explicitly_confirm_msl_without_altering_station_settings():
+    service, store, provider, publisher, current = service_doubles()
+    current["telemetry"] = {"id": "gps-current", "latitude": 21.1, "longitude": -102.1,
+                            "altitudeGpsM": 3000.0, "receivedAt": datetime.now(timezone.utc).isoformat()}
+    references = {}
+    body = ADAPTER.validate_python({"mode": "ascending", "targetRelativeAltitudeM": 15000.0,
+        "ascentRateMs": 5.0, "descentRateMs": 6.5,
+        "launchAltitudeReference": "MSL", "gpsAltitudeReference": "MSL"}).model_dump(mode="json")
+    result = await service.execute("test-flight", body, references)
+    assert references == {}
+    assert result["context"]["mode"] == "ascending"
+    assert result["context"]["telemetryId"] == "gps-current"
+    assert result["parameters"]["gpsAltitudeReference"] == "MSL"
+
+
 @pytest.mark.parametrize("origin", [MANUAL_ORIGIN, {"latitude": 0.0, "longitude": 0.0, "altitudeM": 0.0}])
 async def test_manual_planning_uses_explicit_msl_origin_and_preserves_mission(origin):
     service, store, provider, publisher, current = service_doubles()
@@ -90,7 +115,7 @@ def test_manual_origin_requires_complete_coordinates_and_explicit_msl_confirmati
         ADAPTER.validate_python(planned_body(**changes))
 
 
-@pytest.mark.parametrize("extras", [{"launch": MANUAL_ORIGIN}, {"launchAltitudeReference": "MSL"},
+@pytest.mark.parametrize("extras", [{"launch": MANUAL_ORIGIN}, {"launchDatetime": "2026-11-01T00:00:00Z"},
                                     {"launch": MANUAL_ORIGIN, "launchAltitudeReference": "MSL"}])
 def test_ascending_cannot_replace_received_gps_with_manual_planning_origin(extras):
     body = {"mode": "ascending", "targetRelativeAltitudeM": 15000.0, "ascentRateMs": 5.0,

@@ -1,397 +1,224 @@
 import { lazy, Suspense, useState } from 'react'
 import type { MissionController, MissionState } from '../../application/MissionController.ts'
-import type { PredictionParameters } from '../../domain/mission.ts'
-import { distanceKm, latestPosition, targetAltitude, MAX_TARGET_RELATIVE_ALTITUDE_M, predictionUnavailableReason, predictionParametersChanged } from '../../domain/mission.ts'
-import { ageLabel, clock, dateTime, duration, km, number } from '../format.ts'
+import type { PredictionParameters, Position } from '../../domain/mission.ts'
+import { distanceKm, latestPosition, MAX_TARGET_RELATIVE_ALTITUDE_M, predictionUnavailableReason, predictionParametersChanged, validPredictionParameters } from '../../domain/mission.ts'
+import { missionPredictionDraft, modePredictions } from '../../domain/predictionWorkspace.ts'
+import type { PredictionMode } from '../../domain/predictionWorkspace.ts'
+import { ageLabel, clock, dateTime, duration, number } from '../format.ts'
 import type { MapSettings } from './MissionMap.tsx'
 import { Definition, Dialog, PhaseChip, RangeInput, SectionTitle } from './ui.tsx'
-import PlanningDialog from './PlanningDialog.tsx'
-import MissionIcon from './MissionIcon.tsx'
-import Carousel from './react-bits/Carousel.tsx'
 import InstitutionLogos from './InstitutionLogos.tsx'
+import './RecoveryView.css'
 
 const MissionMap = lazy(() => import('./MissionMap.tsx'))
 function localDatetime(value: string): string {
   const date = new Date(value)
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+  return Number.isFinite(date.getTime())
+    ? new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''
 }
-export default function RecoveryView({
-  state,
-  controller,
-  now,
-  settings,
-  onClose,
-}: {
-  state: MissionState
-  controller: MissionController
-  now: number
-  settings: MapSettings
-  onClose: () => void
+const modeLabel = { planned: 'Planificación', ascending: 'Ascenso' }
+
+export default function RecoveryView({ state, controller, now, settings, onClose }: {
+  state: MissionState; controller: MissionController; now: number; settings: MapSettings; onClose: () => void
 }) {
   const snapshot = state.snapshot!
-  const { mission, prediction } = snapshot
+  const { mission } = snapshot
   const latest = latestPosition(snapshot.telemetry)
   const simulated = controller.gateway.mode === 'demo'
   const demo = simulated && !controller.gateway.realPrediction
-  const [parameters, setParameters] = useState<PredictionParameters>(
-    prediction?.parameters ?? {
-      targetRelativeAltitudeM: mission.targetRelativeAltitudeM,
-      ascentRateMs: mission.nominalAscentMs,
-      descentRateMs: mission.nominalDescentMs,
-      ascentWindDirection: 45,
-      ascentWindMs: 8,
-      descentWindDirection: 120,
-      descentWindMs: 5,
-    },
-  )
-  const [copied, setCopied] = useState(false)
-  const [planningOpen, setPlanningOpen] = useState(false)
-  const [copyError, setCopyError] = useState(false)
-  const [copiedParameters, setCopiedParameters] = useState(false)
-  const [predictionMode, setPredictionMode] = useState<'planned' | 'ascending'>(prediction?.context?.mode ?? 'planned')
-  const [launchDate, setLaunchDate] = useState(() => localDatetime(
-    prediction?.parameters.launchDatetime ?? new Date(Date.now() + 3600000).toISOString(),
-  ))
-  const validDate = launchDate && Number.isFinite(Date.parse(launchDate))
-  const effectiveParameters: PredictionParameters = demo ? parameters : {
-    ...parameters, mode: predictionMode,
-    launch: predictionMode === 'planned' ? parameters.launch : undefined,
-    launchAltitudeReference: predictionMode === 'planned' ? parameters.launchAltitudeReference : undefined,
-    launchDatetime: predictionMode === 'planned' && validDate ? new Date(launchDate).toISOString() : undefined,
+  const [mode, setMode] = useState<PredictionMode>(controller.getPredictionWorkspace().mode)
+  const [drafts, setDrafts] = useState(() => {
+    const draft = (m: PredictionMode) => controller.getPredictionWorkspace().drafts[m] ?? {
+      ...missionPredictionDraft(mission, m, now),
+      ...(m === 'planned' && (demo || snapshot.predictionSettings?.launchAltitudeReference === 'MSL')
+        ? { launchAltitudeReference: 'MSL' as const } : {}),
+      ...(m === 'ascending' && (demo || (snapshot.predictionSettings?.launchAltitudeReference === 'MSL' && snapshot.predictionSettings?.gpsAltitudeReference === 'MSL'))
+        ? { launchAltitudeReference: 'MSL' as const, gpsAltitudeReference: 'MSL' as const } : {}),
+    }
+    return { planned: draft('planned'), ascending: draft('ascending') }
+  })
+  const [copied, setCopied] = useState<string | null>(null)
+  const [compare, setCompare] = useState(false)
+  const parameters = drafts[mode]
+  const [prediction, previous] = modePredictions(snapshot, mode)
+  const changed = prediction && predictionParametersChanged(parameters, {
+    ...prediction.parameters, ...(mode === 'planned' && prediction.context ? { launch: prediction.context.origin } : {}),
+  }, demo)
+  const next = snapshot.predictionSettings?.nextAllowedAt
+  const wait = next ? Math.max(0, Math.ceil((Date.parse(next) - now) / 1000)) : 0
+  const position = parameters.launch ?? mission.launch
+  const invalidOrigin = mode === 'planned' && (!Number.isFinite(position.latitude) || Math.abs(position.latitude) > 90 ||
+    !Number.isFinite(position.longitude) || Math.abs(position.longitude) > 180 || !Number.isFinite(position.altitudeM) ||
+    position.altitudeM < -500 || position.altitudeM > 65534)
+  const draftError = !validPredictionParameters(parameters) ? 'Revisa los parámetros del cálculo.'
+    : invalidOrigin ? 'Revisa las coordenadas y la altitud de lanzamiento.'
+    : mode === 'planned' && (!parameters.launchDatetime || !Number.isFinite(Date.parse(parameters.launchDatetime)) || Date.parse(parameters.launchDatetime) <= now)
+      ? 'Elige una fecha y hora de lanzamiento futura.'
+    : mode === 'planned' && parameters.launchAltitudeReference !== 'MSL' ? 'Confirma la altitud de lanzamiento sobre el nivel del mar.' : null
+  const unavailable = state.connection !== 'connected' ? 'Conecta con la estación para calcular.'
+    : draftError ?? (demo ? null : snapshot.predictionError ?? predictionUnavailableReason(snapshot, parameters, now))
+  const canPredict = snapshot.permissions.canPredict && !unavailable && !state.predicting
+  const age = prediction ? Math.max(0, Math.floor((now - Date.parse(prediction.generatedAt)) / 1000)) : null
+  const dist = prediction && latest?.latitude != null && latest.longitude != null
+    ? distanceKm({ latitude: latest.latitude, longitude: latest.longitude }, prediction.landing) : null
+  const patch = (changes: Partial<PredictionParameters>) => {
+    const updated = { ...parameters, ...changes }
+    setDrafts(old => ({ ...old, [mode]: updated }))
+    controller.savePredictionDraft(mode, updated)
+    controller.clearPredictionError()
   }
-  const update = (key: keyof PredictionParameters) => (value: number) =>
-    setParameters((old) => ({ ...old, [key]: value }))
-  const age = prediction
-    ? Math.max(0, Math.floor((now - Date.parse(prediction.generatedAt)) / 1000))
-    : null
-  const changed = prediction && predictionParametersChanged(effectiveParameters, prediction.parameters, demo)
-  const unavailable = demo ? null : snapshot.predictionError ?? predictionUnavailableReason(snapshot, effectiveParameters, now)
-  const canPredict =
-    snapshot.permissions.canPredict &&
-    state.connection === 'connected' &&
-    (demo || Boolean(snapshot.csrfToken)) &&
-    !unavailable
-  const dist =
-    prediction && latest?.latitude != null && latest.longitude != null
-      ? distanceKm({ latitude: latest.latitude, longitude: latest.longitude }, prediction.landing)
-      : null
-  const sliders = [
-    {
-      key: 'targetRelativeAltitudeM' as const,
-      label: mission.altitudeTargetMode === 'absolute' ? 'Altitud de corte · s. n. m.' : 'Altitud de liberación · relativa',
-      min: 1000,
-      max: MAX_TARGET_RELATIVE_ALTITUDE_M,
-      step: 500,
-      unit: 'm',
-    },
-    {
-      key: 'ascentRateMs' as const,
-      label: 'Vel. ascenso',
-      min: 1,
-      max: 10,
-      step: 0.1,
-      unit: 'm/s',
-    },
-    {
-      key: 'descentRateMs' as const,
-      label: 'Vel. descenso al nivel del mar',
-      min: 1,
-      max: 15,
-      step: 0.1,
-      unit: 'm/s',
-    },
-    ...(demo
-      ? [
-          {
-            key: 'ascentWindDirection' as const,
-            label: 'Viento asc. · dirección',
-            min: 0,
-            max: 360,
-            step: 1,
-            unit: '°',
-          },
-          {
-            key: 'ascentWindMs' as const,
-            label: 'Viento asc. · velocidad',
-            min: 0,
-            max: 30,
-            step: 0.5,
-            unit: 'm/s',
-          },
-          {
-            key: 'descentWindDirection' as const,
-            label: 'Viento desc. · dirección',
-            min: 0,
-            max: 360,
-            step: 1,
-            unit: '°',
-          },
-          {
-            key: 'descentWindMs' as const,
-            label: 'Viento desc. · velocidad',
-            min: 0,
-            max: 30,
-            step: 0.5,
-            unit: 'm/s',
-          },
-        ]
-      : []),
+  const selectMode = (value: PredictionMode) => {
+    controller.savePredictionDraft(mode, parameters)
+    controller.selectPredictionMode(value)
+    setMode(value); setCompare(false); setCopied(null); controller.clearPredictionError()
+  }
+  const reset = () => patch({ ...missionPredictionDraft(mission, mode, now),
+    launchAltitudeReference: demo || snapshot.predictionSettings?.launchAltitudeReference === 'MSL' ? 'MSL' : undefined,
+    gpsAltitudeReference: mode === 'ascending' && (demo || snapshot.predictionSettings?.gpsAltitudeReference === 'MSL') ? 'MSL' : undefined })
+  const setPosition = (key: keyof Position, value: string) => patch({ launch: { ...position, [key]: value === '' ? NaN : Number(value) } })
+  const fields = [
+    { key: 'targetRelativeAltitudeM' as const, label: mission.altitudeTargetMode === 'absolute' ? 'Altitud de corte · m s. n. m.' : 'Altitud de corte · m sobre el lanzamiento', min: 1000, max: MAX_TARGET_RELATIVE_ALTITUDE_M, step: 1 },
+    { key: 'ascentRateMs' as const, label: 'Velocidad de ascenso · m/s', min: 1, max: 10, step: 0.1 },
+    { key: 'descentRateMs' as const, label: 'Velocidad de descenso · m/s', min: 1, max: 15, step: 0.1 },
   ]
-  return (
-    <Dialog
-      title="Recuperación · Rastreo y predicción"
-      onClose={onClose}
-      className="recovery-dialog mission-dialog"
-    >
-      <div className="recovery-shell">
-        <div className="recovery-status">
-          <button className="button subtle" onClick={() => setPlanningOpen(true)}>＋ Planificación independiente</button>
-          <PhaseChip phase={mission.phase} />
-          <span className="tiny-badge badge-amber">
-            {simulated ? (demo ? 'ESCENARIO SIMULADO' : 'TELEMETRÍA SIMULADA · TAWHIRI REAL') : 'ESTIMACIÓN · NO ES ATERRIZAJE CONFIRMADO'}
-          </span>
-        </div>
-        <section className="operation-hero" aria-label="Resumen de recuperación">
-          <p className="mission-eyebrow"><MissionIcon name="map" /> RASTREO Y RECUPERACIÓN</p>
-          <h3>El próximo punto de encuentro.</h3>
-          <p>Posición {simulated ? 'simulada' : 'recibida'} y aterrizaje estimado, siempre por separado.</p>
-          <dl className="operation-metrics">
-            <Definition label="Altitud GPS · s. n. m." tone="cyan">{km(latest?.altitudeGpsM)} km</Definition>
-            <Definition label="Distancia a la estimación">{number(dist)} km</Definition>
-            <Definition label="Llegada estimada" tone="amber">{prediction ? clock(prediction.landing.time) : '—'}</Definition>
-            <Definition label="Tiempo restante">{prediction ? duration((Date.parse(prediction.landing.time) - now) / 1000) : '—'}</Definition>
-          </dl>
-        </section>
-        <div className="recovery-grid">
-          <section className="panel recovery-map-panel" id="recovery-map">
-            <SectionTitle>Mapa de trayectoria y aterrizaje predicho</SectionTitle>
-            <Suspense fallback={<div className="map-loading">Cargando cartografía…</div>}>
-              <MissionMap snapshot={snapshot} settings={settings} overview />
-            </Suspense>
-            <div className="map-legend">
-              <span>
-                <i className="legend-dot launch" />
-                Lanzamiento
-              </span>
-              <span>
-                <i className="legend-line" />
-                {simulated ? 'Trayectoria simulada' : 'Trayectoria recibida'}
-              </span>
-              <span>
-                <i className="legend-dot release" />
-                Liberación estimada
-              </span>
-              <span>
-                <i className="legend-line predicted" />
-                Ruta predicha / aterrizaje
-              </span>
-            </div>
-            <p className="helper-text">
-              {simulated
-                ? 'Origen y recorrido ficticios para probar la interfaz. La ruta predicha se muestra por separado.'
-                : 'La ruta medida se conserva separada de la predicción.'}
-            </p>
-          </section>
-          <div className="recovery-data">
-            <section className="panel">
-              <SectionTitle>1 · Datos en tiempo real</SectionTitle>
-              <dl className="detail-list">
-                <Definition label="Latitud">{number(latest?.latitude, 6)}°</Definition>
-                <Definition label="Longitud">{number(latest?.longitude, 6)}°</Definition>
-                <Definition label="Altitud GPS · s. n. m." tone="cyan">
-                  {km(latest?.altitudeGpsM)} km
-                </Definition>
-                <Definition label="Recepción local">{clock(latest?.receivedAt)}</Definition>
-                <Definition label="Paquete">{latest ? '#' + latest.frameCounter : '—'}</Definition>
-              </dl>
-              <dl className="stacked-details">
-                <Definition label="Lanzamiento">{dateTime(mission.startedAt)}</Definition>
-                <Definition label="Punto de despegue">
-                  {number(mission.launch.latitude, 5)}°, {number(mission.launch.longitude, 5)}°
-                </Definition>
-              </dl>
-            </section>
-            <section className="panel predictor-panel" id="recovery-parameters">
-              <SectionTitle>2 · Parámetros del predictor</SectionTitle>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  void controller.predict(effectiveParameters)
-                }}
-              >
-                {!demo && <>
-                  <label className="prediction-field">
-                    <span>Contexto del cálculo</span>
-                    <select value={predictionMode} onChange={(event) => setPredictionMode(event.target.value as 'planned' | 'ascending')}>
-                      <option value="planned">Planificación · sitio de lanzamiento</option>
-                      <option value="ascending">Ascenso · último GPS recibido</option>
-                    </select>
-                  </label>
-                  {predictionMode === 'planned' && <label className="prediction-field">
-                    <span>Lanzamiento · hora local del navegador</span>
-                    <input type="datetime-local" required value={launchDate} onChange={(event) => setLaunchDate(event.target.value)} />
-                    <small>UTC: {effectiveParameters.launchDatetime ?? 'Elige una fecha válida'}</small>
-                  </label>}
-                  {predictionMode === 'planned' && parameters.launch && <p className="helper-text">Origen independiente: {number(parameters.launch.latitude, 6)}°, {number(parameters.launch.longitude, 6)}° · {number(parameters.launch.altitudeM, 1)} m s. n. m. Abre Planificación independiente para cambiarlo.</p>}
-                  <p className="helper-text">El contexto elegido es un supuesto del cálculo; no confirma la fase física.
-                    {predictionMode === 'ascending' && ' Se usa la hora de recepción, porque el paquete no incluye hora GPS.'}</p>
-                </>}
-                {sliders.map((s) => (
-                  <RangeInput
-                    key={s.key}
-                    label={s.label}
-                    value={parameters[s.key]}
-                    min={s.min}
-                    max={s.max}
-                    step={s.step}
-                    unit={s.unit}
-                    onChange={update(s.key)}
-                    disabled={state.predicting}
-                  />
-                ))}
-                <button className="button full-width" disabled={!canPredict || state.predicting}>
-                  {state.predicting
-                    ? 'Calculando…'
-                    : demo
-                      ? 'Recalcular escenario'
-                      : 'Consultar Tawhiri'}
-                </button>
-              </form>
-              <p className="helper-text">
-                {demo
-                  ? 'Vientos constantes de ejemplo. Este escenario no sirve para planear un vuelo real.'
-                  : ['descending', 'landed'].includes(mission.phase)
-                    ? 'Se conserva la predicción previa. El perfil de descenso requiere validación del backend.'
-                    : 'Meteorología y cálculo vía backend. Solicitudes separadas al menos 60 segundos.'}
-              </p>
-              {!demo && (unavailable || state.connection !== 'connected') && <p role="status" className="helper-text tone-amber">
-                {state.connection !== 'connected' ? 'Conecta con la estación local para calcular.' : unavailable}
-              </p>}
-              {snapshot.predictionError && <button className="button subtle" onClick={() => void controller.refresh()}>Reintentar conexión</button>}
-              {changed && (
-                <p className="tone-amber helper-text">
-                  Parámetros modificados. Recalcula para actualizar el resultado.
-                </p>
-              )}
-              {state.actionError && (
-                <p className="inline-error" role="alert">
-                  {state.actionError}
-                </p>
-              )}
-            </section>
-            <section className="panel prediction-panel" id="recovery-result">
-              <div className="section-heading">
-                <SectionTitle amber>Predicción de aterrizaje</SectionTitle>
-                {prediction && (
-                  <span className={'tiny-badge' + (age! > 120 ? ' badge-amber' : '')}>
-                    {ageLabel(age)}
-                  </span>
-                )}
-              </div>
-              {prediction ? (
-                <>
-                  <dl className="detail-list">
-                    <Definition label="Lat. estimada" tone="amber">
-                      {number(prediction.landing.latitude, 5)}°
-                    </Definition>
-                    <Definition label="Lon. estimada" tone="amber">
-                      {number(prediction.landing.longitude, 5)}°
-                    </Definition>
-                    <Definition label="Hora de llegada local" tone="amber">
-                      {clock(prediction.landing.time)}
-                    </Definition>
-                    <Definition label="Tiempo restante">
-                      {duration((Date.parse(prediction.landing.time) - now) / 1000)}
-                    </Definition>
-                    <Definition label="Hora de liberación">
-                      {clock(prediction.release.time)}
-                    </Definition>
-                    <Definition label="Dist. desde posición">{number(dist)} km</Definition>
-                  </dl>
-                  <Carousel className="orbitium-carousel recovery-detail-carousel" baseWidth="100%" autoHeight peek={0} gap={16} radius={4} frame={false} effect="slide" indicator="counter" arrows autoplay={false} loop={false} items={[
-                    <article key="weather" className="mission-detail-card"><div className="mission-detail-heading"><MissionIcon name="charts" />01 / PROCEDENCIA</div><h3>Datos del cálculo</h3><dl className="detail-list">
-                     <Definition label="Cálculo">{dateTime(prediction.generatedAt)}</Definition>
-                    <Definition label="Meteorología">
-                      {prediction.weatherAt
-                        ? dateTime(prediction.weatherAt)
-                        : prediction.source === 'demo'
-                          ? 'No aplica · simulación'
-                          : 'No disponible'}
-                    </Definition>
-                    </dl></article>,
-                    ...(prediction.context ? [<article key="context" className="mission-detail-card"><div className="mission-detail-heading"><MissionIcon name="settings" />02 / CONTEXTO</div><h3>Referencias utilizadas</h3><dl className="detail-list">
-                      <Definition label="Contexto utilizado">{prediction.context.mode === 'planned' ? 'Planificación' : 'Ascenso · supuesto del operador'}</Definition>
-                      <Definition label="Origen del cálculo">{number(prediction.context.origin.latitude, 6)}°, {number(prediction.context.origin.longitude, 6)}°</Definition>
-                      <Definition label="Altitud inicial · s. n. m.">{number(prediction.context.origin.altitudeM, 1)} m</Definition>
-                      <Definition label="Inicio del cálculo · UTC">{prediction.context.originAt}</Definition>
-                      <Definition label="Liberación · s. n. m.">{number(targetAltitude(mission, prediction.parameters.targetRelativeAltitudeM, prediction.parameters.launch?.altitudeM ?? mission.launch.altitudeM), 1)} m</Definition>
-                      <Definition label="Paquete utilizado">{prediction.context.inputSource === 'simulated' ? 'Entrada de demostración' : prediction.context.telemetryId ?? 'No aplica · planificación'}</Definition>
-                    </dl></article>] : []),
-                  ]} />
-                  <button
-                    className="button subtle full-width"
-                    onClick={async () => {
-                      try {
-                        await navigator.clipboard.writeText(
-                          number(prediction.landing.latitude, 6) +
-                            ', ' +
-                            number(prediction.landing.longitude, 6),
-                        )
-                        setCopied(true)
-                        setCopyError(false)
-                      } catch {
-                        setCopyError(true)
-                      }
-                    }}
-                  >
-                    {copied ? '✓ Coordenadas copiadas' : 'Copiar coordenadas'}
-                  </button>
-                  {prediction.context && <>
-                    <button className="button subtle full-width" onClick={async () => {
-                      try {
-                        const origin = prediction.context!.origin
-                        await navigator.clipboard.writeText(JSON.stringify({
-                          profile: 'standard_profile', launch_latitude: origin.latitude,
-                          launch_longitude: (origin.longitude + 360) % 360, launch_altitude: origin.altitudeM,
-                          launch_datetime: prediction.context!.originAt,
-                          burst_altitude: targetAltitude(mission, prediction.parameters.targetRelativeAltitudeM, prediction.parameters.launch?.altitudeM ?? mission.launch.altitudeM),
-                          ascent_rate: prediction.parameters.ascentRateMs, descent_rate: prediction.parameters.descentRateMs,
-                          dataset: prediction.context!.dataset,
-                        }, null, 2))
-                        setCopiedParameters(true)
-                        setCopyError(false)
-                      } catch { setCopyError(true) }
-                    }}>{copiedParameters ? '✓ Parámetros copiados' : 'Copiar parámetros para SondeHub'}</button>
-                    <a className="button subtle full-width" href="https://predict.sondehub.org/" target="_blank" rel="noreferrer">Abrir SondeHub Predictor ↗</a>
-                  </>}
-                  {copyError && (
-                    <p role="status" className="helper-text">
-                      No se pudo copiar. Selecciona las coordenadas del resultado.
-                    </p>
-                  )}
-                  <p className="helper-text">
-                    {prediction.source === 'demo'
-                      ? 'Predicción simplificada, sin datos meteorológicos ni incertidumbre validada.'
-                      : prediction.context?.inputSource === 'simulated'
-                        ? 'Tawhiri real con meteorología del proveedor y entradas simuladas. No valida precisión de vuelo.'
-                        : 'Tawhiri · estimación conservada hasta el siguiente cálculo válido. No confirma recuperación.'}
-                  </p>
-                </>
-              ) : (
-                <p className="empty-state">
-                  No hay una predicción disponible. Solicita el primer cálculo cuando la estación
-                  esté conectada.
-                </p>
-              )}
-            </section>
-          </div>
-        </div>
-        <InstitutionLogos />
+  const copy = async (kind: string, value: string) => {
+    try { await navigator.clipboard.writeText(value); setCopied(kind) }
+    catch { setCopied('error') }
+  }
+  return <Dialog title="Rastreo y predicción" onClose={onClose} className="recovery-dialog mission-dialog">
+    <div className="recovery-shell prediction-workspace">
+      <header className="prediction-intro">
+        <div><p className="mission-eyebrow">PREDICCIÓN DE ATERRIZAJE</p><h3>¿Qué predicción quieres consultar?</h3><p>Elige el momento del vuelo, revisa los datos y calcula.</p></div>
+        <div className="recovery-status"><PhaseChip phase={mission.phase} /><span className="tiny-badge badge-amber">{demo ? 'ESCENARIO SIMULADO' : simulated ? 'TAWHIRI · ENTRADAS SIMULADAS' : 'ESTIMACIÓN'}</span></div>
+      </header>
+      <div className="prediction-mode-picker" role="group" aria-label="Tipo de predicción">
+        {(['planned', 'ascending'] as const).map(value => <button key={value} type="button" aria-pressed={mode === value}
+          disabled={state.predicting} onClick={() => selectMode(value)}>
+          <strong>{modeLabel[value]}</strong><span>{value === 'planned' ? 'Antes del vuelo · lugar y hora de lanzamiento' : 'Durante la subida · último GPS recibido'}</span>
+        </button>)}
       </div>
-      {planningOpen && <PlanningDialog state={state} controller={controller} parameters={effectiveParameters} settings={settings} now={now}
-        onClose={() => setPlanningOpen(false)} onGenerated={p => {
-          setParameters(p); setPredictionMode('planned'); setLaunchDate(localDatetime(p.launchDatetime!))
-        }} />}
-    </Dialog>
-  )
+      <div className={'prediction-readiness' + (unavailable ? ' is-blocked' : '')} role="status" aria-live="polite">
+        <strong>{state.predicting ? 'Calculando la trayectoria…' : unavailable ?? 'Listo para calcular'}</strong>
+        <span>{state.predicting ? 'El resultado anterior se conserva mientras llega la respuesta.'
+          : unavailable ? 'Tus ajustes se conservan. Resuelve este paso para continuar.' : `${modeLabel[mode]}: revisa los parámetros y pulsa el botón de cálculo.`}</span>
+        {!demo && (!snapshot.predictionSettings?.enabled || snapshot.predictionError || state.connection !== 'connected') &&
+          <button type="button" className="button subtle" onClick={() => void controller.refresh()}>Comprobar conexión y permisos</button>}
+      </div>
+      <div className="recovery-grid">
+        <div className="recovery-data prediction-controls">
+          <section className="panel predictor-panel" id="recovery-parameters" aria-label={`Configurar ${modeLabel[mode]}`}>
+            <SectionTitle>1 · Configura {modeLabel[mode].toLowerCase()}</SectionTitle>
+            <form onSubmit={async event => {
+              event.preventDefault()
+              if (!canPredict) return
+              controller.savePredictionDraft(mode, parameters)
+              await controller.predict(parameters)
+            }}>
+              <fieldset disabled={state.predicting}>
+                {mode === 'planned' ? <>
+                  <label className="prediction-field"><span>Fecha y hora de lanzamiento</span>
+                    <input type="datetime-local" required value={localDatetime(parameters.launchDatetime ?? '')} onChange={event => {
+                      const date = new Date(event.target.value)
+                      patch({ launchDatetime: Number.isFinite(date.getTime()) ? date.toISOString() : undefined })
+                    }} />
+                    <small>Hora local · {Intl.DateTimeFormat().resolvedOptions().timeZone}</small>
+                  </label>
+                  <div className="prediction-origin-summary"><strong>Lugar de lanzamiento</strong><span>{number(position.latitude, 5)}°, {number(position.longitude, 5)}° · {number(position.altitudeM, 0)} m s. n. m.</span></div>
+                  <details className="prediction-location-editor"><summary>Editar lugar y altitud</summary>
+                    {([{ key: 'latitude', label: 'Latitud · grados', min: -90, max: 90 }, { key: 'longitude', label: 'Longitud · grados', min: -180, max: 180 }, { key: 'altitudeM', label: 'Altitud de lanzamiento · m s. n. m.', min: -500, max: 65534 }] as const).map(field =>
+                      <label key={field.key} className="prediction-field"><span>{field.label}</span><input type="number" required step="any" min={field.min} max={field.max} value={Number.isFinite(position[field.key]) ? position[field.key] : ''} onChange={e => setPosition(field.key, e.target.value)} /></label>)}
+                    <p className="helper-text">Estos cambios se usan en esta planificación. El sitio oficial de misión se conserva.</p>
+                  </details>
+                  <label className="prediction-confirm"><input type="checkbox" checked={parameters.launchAltitudeReference === 'MSL'} onChange={e => patch({ launchAltitudeReference: e.target.checked ? 'MSL' : undefined })} /> Altitud de lanzamiento referida al nivel del mar (MSL).</label>
+                </> : <><div className="prediction-gps-summary">
+                  <strong>Origen automático · último GPS válido</strong>
+                  <p>{latest ? `${number(latest.latitude, 5)}°, ${number(latest.longitude, 5)}° · ${number(latest.altitudeGpsM, 0)} m s. n. m.` : 'Todavía no hay una posición GPS.'}</p>
+                  <p className="helper-text">{latest ? `Recibido: ${dateTime(latest.receivedAt)} · ${ageLabel(Math.max(0, Math.floor((now - Date.parse(latest.receivedAt)) / 1000)))}` : 'Espera un paquete con ubicación para calcular.'}</p>
+                  <p className="helper-text">El próximo cálculo usará el paquete válido más reciente. Seleccionar Ascenso no cambia la fase de misión.</p>
+                </div><label className="prediction-confirm"><input type="checkbox"
+                  checked={parameters.launchAltitudeReference === 'MSL' && parameters.gpsAltitudeReference === 'MSL'}
+                  onChange={e => patch({ launchAltitudeReference: e.target.checked ? 'MSL' : undefined, gpsAltitudeReference: e.target.checked ? 'MSL' : undefined })} />
+                  Las altitudes de lanzamiento y GPS están referidas al nivel del mar (MSL).
+                </label></>}
+                <div className="prediction-numbers">{fields.map(field => <label className="prediction-field" key={field.key}>
+                  <span>{field.label}</span><input type="number" required min={field.min} max={field.max} step={field.step}
+                    value={Number.isFinite(parameters[field.key]) ? parameters[field.key] : ''} onChange={e => patch({ [field.key]: e.target.value === '' ? NaN : Number(e.target.value) })} />
+                </label>)}</div>
+                <p className="helper-text">Descenso: velocidad de referencia al nivel del mar; varía con la altura en el modelo.</p>
+                {demo && <details><summary>Vientos del escenario simulado</summary>{([
+                  ['ascentWindDirection', 'Dirección en ascenso', 360, '°'], ['ascentWindMs', 'Viento en ascenso', 30, 'm/s'],
+                  ['descentWindDirection', 'Dirección en descenso', 360, '°'], ['descentWindMs', 'Viento en descenso', 30, 'm/s'],
+                ] as const).map(([key, label, max, unit]) => <RangeInput key={key} label={label} value={parameters[key]} min={0} max={max} step={1} unit={unit} onChange={value => patch({ [key]: value })} />)}</details>}
+                <button type="button" className="text-button prediction-reset" onClick={reset}>Restaurar valores de misión</button>
+              </fieldset>
+              {changed && <div className="prediction-pending" role="status"><strong>Cambios pendientes de calcular</strong>
+                <p>El mapa conserva el resultado anterior de {modeLabel[mode].toLowerCase()}.</p>
+                {(['ascentRateMs', 'descentRateMs'] as const).filter(key => parameters[key] !== prediction.parameters[key]).map(key =>
+                  <p key={key}>{key === 'ascentRateMs' ? 'Ascenso' : 'Descenso'}: {number(prediction.parameters[key], 1)} → {number(parameters[key], 1)} m/s</p>)}
+              </div>}
+              <button className="button full-width prediction-calculate" disabled={!canPredict}>
+                {state.predicting ? 'Calculando…' : wait > 0 && !demo ? `Disponible en ${wait} s` : mode === 'planned' ? 'Calcular planificación' : 'Actualizar predicción de ascenso'}
+              </button>
+              {unavailable && <p className="helper-text tone-amber" role="status">{unavailable}</p>}
+              {mode === 'ascending' && unavailable?.includes('GPS válido y reciente') &&
+                <button type="button" className="button subtle full-width" onClick={() => selectMode('planned')}>Usar Planificación mientras llega GPS</button>}
+              <p className="helper-text">{demo ? 'Escenario simulado con vientos de ejemplo.' : 'Un cálculo por minuto. La espera también aplica si falla la consulta.'}</p>
+              {state.predictionActionError && <p className="inline-error" role="alert">{state.predictionActionError}</p>}
+            </form>
+          </section>
+          <details className="panel prediction-telemetry"><summary>Ver telemetría recibida</summary><dl className="detail-list">
+            <Definition label="Posición">{number(latest?.latitude, 5)}°, {number(latest?.longitude, 5)}°</Definition>
+            <Definition label="Altitud GPS">{number(latest?.altitudeGpsM, 0)} m s. n. m.</Definition>
+            <Definition label="Recepción">{dateTime(latest?.receivedAt)}</Definition>
+            <Definition label="Paquete">{latest ? `#${latest.frameCounter}` : '—'}</Definition>
+          </dl></details>
+        </div>
+        <div className="prediction-output">
+          <section className="panel prediction-panel" id="recovery-result">
+            <div className="section-heading"><SectionTitle amber>2 · Resultado de {modeLabel[mode].toLowerCase()}</SectionTitle>{prediction && <span className="tiny-badge">{ageLabel(age)}</span>}</div>
+            {prediction ? <>
+              <p className="helper-text">Calculado: {dateTime(prediction.generatedAt)}{changed ? ' · Conservado mientras ajustas los parámetros.' : ''}</p>
+              <dl className="prediction-result-metrics">
+                <Definition label="Aterrizaje estimado" tone="amber">{number(prediction.landing.latitude, 5)}°, {number(prediction.landing.longitude, 5)}°</Definition>
+                <Definition label="Llegada local">{dateTime(prediction.landing.time)}</Definition>
+                <Definition label="Tiempo hasta llegada">{duration((Date.parse(prediction.landing.time) - now) / 1000)}</Definition>
+                <Definition label="Distancia desde GPS">{number(dist, 2)} km</Definition>
+              </dl>
+              <p className="prediction-used">Usó ascenso <strong>{number(prediction.parameters.ascentRateMs, 1)} m/s</strong> · descenso <strong>{number(prediction.parameters.descentRateMs, 1)} m/s</strong> · corte <strong>{number(prediction.parameters.targetRelativeAltitudeM, 0)} m</strong> {mission.altitudeTargetMode === 'absolute' ? 's. n. m.' : 'sobre lanzamiento'}</p>
+              {previous && <><button type="button" className="button subtle" aria-expanded={compare} onClick={() => setCompare(!compare)}>Comparar con anterior</button>
+                {compare && <div className="prediction-comparison"><strong>Comparación con {dateTime(previous.generatedAt)}</strong>
+                  <p>Separación entre aterrizajes: {number(distanceKm(previous.landing, prediction.landing), 3)} km.</p>
+                  <p>Diferencia de llegada (nuevo − anterior): {number((Date.parse(prediction.landing.time) - Date.parse(previous.landing.time)) / 60, 1)} min.</p>
+                  <p>Ascenso: {number(previous.parameters.ascentRateMs, 1)} → {number(prediction.parameters.ascentRateMs, 1)} m/s · descenso: {number(previous.parameters.descentRateMs, 1)} → {number(prediction.parameters.descentRateMs, 1)} m/s.</p>
+                  <small>También pueden variar origen, hora, altitud y meteorología. Esta comparación no aísla el efecto de las velocidades.</small>
+                </div>}</>}
+            </> : <p className="empty-state">Aún no hay un resultado de {modeLabel[mode].toLowerCase()}. Revisa los datos del paso 1 y calcula para ver la ruta.</p>}
+          </section>
+          <section className="panel recovery-map-panel" id="recovery-map">
+            <SectionTitle>Mapa · {modeLabel[mode]}</SectionTitle>
+            <Suspense fallback={<div className="map-loading">Cargando mapa…</div>}><MissionMap snapshot={{ ...snapshot, prediction: prediction ?? null }} settings={settings} overview /></Suspense>
+            <div className="map-legend"><span><i className="legend-line" /> Trayectoria {simulated ? 'simulada' : 'recibida'}</span><span><i className="legend-line predicted" /> Predicción de {modeLabel[mode].toLowerCase()}</span></div>
+            <p className="helper-text">La ruta recibida y la estimación se muestran por separado. La estimación no confirma el aterrizaje.</p>
+          </section>
+          {prediction && <details className="panel prediction-technical"><summary>Detalles del cálculo y exportación</summary>
+            <dl className="detail-list"><Definition label="Fuente">{prediction.source === 'demo' ? 'Simulación' : 'Tawhiri'}</Definition>
+              <Definition label="Meteorología">{prediction.weatherAt ? dateTime(prediction.weatherAt) : 'Fecha no disponible'}</Definition>
+              <Definition label="Dataset">{prediction.context?.dataset ?? 'No disponible'}</Definition>
+              <Definition label="Origen">{number(prediction.context?.origin.latitude, 5)}°, {number(prediction.context?.origin.longitude, 5)}°</Definition>
+              <Definition label="Hora de liberación">{clock(prediction.release.time)}</Definition>
+            </dl>
+            <div className="prediction-export"><button className="button subtle" onClick={() => void copy('coordinates', `${prediction.landing.latitude}, ${prediction.landing.longitude}`)}>Copiar coordenadas</button>
+              {prediction.context && <><button className="button subtle" onClick={() => {
+                const c = prediction.context!
+                void copy('parameters', JSON.stringify({ profile: 'standard_profile', launch_latitude: c.origin.latitude, launch_longitude: (c.origin.longitude + 360) % 360,
+                  launch_altitude: c.origin.altitudeM, launch_datetime: c.originAt, burst_altitude: prediction.release.altitudeM,
+                  ascent_rate: prediction.parameters.ascentRateMs, descent_rate: prediction.parameters.descentRateMs, dataset: c.dataset }, null, 2))
+              }}>Copiar parámetros para SondeHub</button><a className="button subtle" href="https://predict.sondehub.org/" target="_blank" rel="noreferrer">Abrir SondeHub Predictor ↗</a></>}
+            </div>{copied && <p role="status" className="helper-text">{copied === 'error' ? 'No se pudo copiar. Selecciona los datos del resultado.' : 'Datos copiados.'}</p>}
+          </details>}
+        </div>
+      </div>
+      <InstitutionLogos />
+    </div>
+  </Dialog>
 }

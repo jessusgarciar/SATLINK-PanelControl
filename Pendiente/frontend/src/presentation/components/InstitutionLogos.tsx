@@ -5,8 +5,12 @@ import './InstitutionLogos.css'
 export default function InstitutionLogos() {
   return (
     <div className="institution-logos" role="group" aria-label="Instituciones participantes">
-      <img className="institution-logos-pabellon" src={pabellonLogo} alt="Instituto Tecnológico de Pabellón de Arteaga" width={511} height={165} />
-      <img className="institution-logos-tecnm" src={tecnmLogo} alt="Tecnológico Nacional de México" width={281} height={129} />
+      <span className="institution-logos-pabellon" role="img" aria-label="Instituto Tecnológico de Pabellón de Arteaga" style={{ maskImage: `url("${pabellonLogo}")` }}>
+        <img src={pabellonLogo} alt="" aria-hidden="true" width={511} height={165} />
+      </span>
+      <span className="institution-logos-tecnm" role="img" aria-label="Tecnológico Nacional de México" style={{ maskImage: `url("${tecnmLogo}")` }}>
+        <img src={tecnmLogo} alt="" aria-hidden="true" width={281} height={129} />
+      </span>
     </div>
   )
 }

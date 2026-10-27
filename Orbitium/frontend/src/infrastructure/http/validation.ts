@@ -221,6 +221,8 @@ function parameters(value: unknown): PredictionParameters {
     ...(p.mode === undefined ? {} : { mode: oneOf(p.mode, ['planned', 'ascending'] as const) }),
     ...(p.launchDatetime === undefined ? {} : { launchDatetime: timestamp(p.launchDatetime) }),
     ...(p.launch == null ? {} : { launch: position(p.launch), launchAltitudeReference: oneOf(p.launchAltitudeReference, ['MSL'] as const) }),
+    ...(p.mode === 'ascending' && p.launchAltitudeReference != null ? { launchAltitudeReference: oneOf(p.launchAltitudeReference, ['MSL'] as const) } : {}),
+    ...(p.mode === 'ascending' && p.gpsAltitudeReference != null ? { gpsAltitudeReference: oneOf(p.gpsAltitudeReference, ['MSL'] as const) } : {}),
     targetRelativeAltitudeM: num(p.targetRelativeAltitudeM),
     ascentRateMs: num(p.ascentRateMs),
     descentRateMs: num(p.descentRateMs),
@@ -272,16 +274,18 @@ export function parseSnapshot(value: unknown, missionId: string): DashboardSnaps
   const commands = array(s.commands, parseCommand)
   const events = array(s.events, parseEvent)
   const prediction = s.prediction === null ? null : parsePrediction(s.prediction)
+  const predictionHistory = s.predictionHistory == null ? [] : array(s.predictionHistory, parsePrediction, 4)
   const settings = s.predictionSettings == null ? null : record(s.predictionSettings)
   const commandSettings = s.commandSettings == null ? null : record(s.commandSettings)
   if (
-    [...telemetry, ...commands, ...events, ...(prediction ? [prediction] : [])].some(
+    [...telemetry, ...commands, ...events, ...predictionHistory, ...(prediction ? [prediction] : [])].some(
       (item) => item.missionId !== missionId,
     )
   )
     throw new Error('La respuesta contiene datos de otra misión.')
   return {
     mission,
+    predictionHistory,
     ...(commandSettings === null ? {} : { commandSettings: {
       enabled: bool(commandSettings.enabled),
       supportedTypes: array(commandSettings.supportedTypes, (value) => oneOf<CommandType>(value, ['PING', 'STATUS', 'TELEMETRY', 'START_MISSION', 'RELEASE_NOW'])),

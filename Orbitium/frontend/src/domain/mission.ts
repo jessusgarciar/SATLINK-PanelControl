@@ -90,6 +90,7 @@ export interface PredictionParameters {
   launchDatetime?: string
   launch?: Position
   launchAltitudeReference?: 'MSL'
+  gpsAltitudeReference?: 'MSL'
   targetRelativeAltitudeM: number
   ascentRateMs: number
   descentRateMs: number
@@ -160,6 +161,7 @@ export interface DashboardSnapshot {
   commands: Command[]
   events: MissionEvent[]
   prediction: Prediction | null
+  predictionHistory?: Prediction[]
   permissions: { canCommand: boolean; canPredict: boolean }
   csrfToken: string | null
 }
@@ -293,7 +295,8 @@ export function predictionUnavailableReason(
   if (['descending', 'landed'].includes(snapshot.mission.phase))
     return 'Se conserva la predicción previa durante descenso o aterrizaje.'
   if (!validPredictionParameters(p)) return 'Revisa los parámetros del cálculo.'
-  if (!(p.mode === 'planned' && p.launch && p.launchAltitudeReference === 'MSL') && snapshot.predictionSettings.launchAltitudeReference !== 'MSL')
+  if (!(p.mode === 'planned' && p.launch && p.launchAltitudeReference === 'MSL') &&
+      !(p.mode === 'ascending' && p.launchAltitudeReference === 'MSL') && snapshot.predictionSettings.launchAltitudeReference !== 'MSL')
     return 'Confirma la altitud del lanzamiento sobre el nivel del mar.'
   const next = snapshot.predictionSettings.nextAllowedAt
   if (next && Date.parse(next) > now)
@@ -307,7 +310,7 @@ export function predictionUnavailableReason(
         !Number.isFinite(Date.parse(p.launchDatetime)) || Date.parse(p.launchDatetime) < now)
       return 'Elige una fecha y hora de lanzamiento futura.'
   } else if (p.mode === 'ascending') {
-    if (snapshot.predictionSettings.gpsAltitudeReference !== 'MSL')
+    if (snapshot.predictionSettings.gpsAltitudeReference !== 'MSL' && p.gpsAltitudeReference !== 'MSL')
       return 'Confirma que la altitud GPS está sobre el nivel del mar.'
     const sample = latestPosition(snapshot.telemetry)
     if (!sample || sample.latitude === null || sample.longitude === null || sample.altitudeGpsM === null ||

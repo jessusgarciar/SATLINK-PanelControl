@@ -33,6 +33,8 @@ class PlannedPredictionRequest(PredictionNumbers):
 
 class AscendingPredictionRequest(PredictionNumbers):
     mode: Literal["ascending"]
+    launchAltitudeReference: Literal["MSL"] | None = Field(default=None, exclude_if=lambda value: value is None)
+    gpsAltitudeReference: Literal["MSL"] | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 PredictionRequest = Annotated[PlannedPredictionRequest | AscendingPredictionRequest,
@@ -103,3 +105,4 @@ class DemoPredictionSession(DTO):
     csrfToken: str | None
     nextAllowedAt: str | None
     prediction: PredictionDTO | None
+    predictionHistory: Annotated[list[PredictionDTO], Field(max_length=4)] = Field(default_factory=list)

@@ -1,0 +1,100 @@
+{
+  "inputSource": "public synthetic coordinates; no device telemetry; not saved to mission",
+  "results": [
+    {
+      "case": "baseline",
+      "request": {
+        "profile": "standard_profile",
+        "launch_latitude": 21.0,
+        "launch_longitude": 258.0,
+        "launch_altitude": 1870.0,
+        "launch_datetime": "2026-10-27T05:36:52.799535+00:00",
+        "burst_altitude": 15000.0,
+        "ascent_rate": 5.0,
+        "descent_rate": 5.0
+      },
+      "dataset": "2026-10-26T18:00:00Z",
+      "release": {
+        "altitude": 15002.03125,
+        "datetime": "2026-10-27T06:20:39.205785Z",
+        "latitude": 21.099308818914793,
+        "longitude": 258.2742412807952
+      },
+      "landing": {
+        "altitude": 2238.6806652538207,
+        "datetime": "2026-10-27T06:47:48.112035Z",
+        "latitude": 21.154555435994332,
+        "longitude": 258.4244233080312
+      },
+      "trajectoryPoints": 74,
+      "comparisonWithBaseline": {
+        "landingSeparationKm": 0.0,
+        "arrivalDifferenceMinutes": 0.0
+      }
+    },
+    {
+      "case": "ascent-only",
+      "request": {
+        "profile": "standard_profile",
+        "launch_latitude": 21.0,
+        "launch_longitude": 258.0,
+        "launch_altitude": 1870.0,
+        "launch_datetime": "2026-10-27T05:36:52.799535+00:00",
+        "burst_altitude": 15000.0,
+        "ascent_rate": 6.0,
+        "descent_rate": 5.0,
+        "dataset": "2026-10-26T18:00:00Z"
+      },
+      "dataset": "2026-10-26T18:00:00Z",
+      "release": {
+        "altitude": 15001.5625,
+        "datetime": "2026-10-27T06:13:21.393285Z",
+        "latitude": 21.08205080367845,
+        "longitude": 258.22805929556466
+      },
+      "landing": {
+        "altitude": 1830.6951363173644,
+        "datetime": "2026-10-27T06:41:44.362035Z",
+        "latitude": 21.13814566583421,
+        "longitude": 258.3761072518094
+      },
+      "trajectoryPoints": 68,
+      "comparisonWithBaseline": {
+        "landingSeparationKm": 5.333,
+        "arrivalDifferenceMinutes": -6.062
+      }
+    },
+    {
+      "case": "descent-only",
+      "request": {
+        "profile": "standard_profile",
+        "launch_latitude": 21.0,
+        "launch_longitude": 258.0,
+        "launch_altitude": 1870.0,
+        "launch_datetime": "2026-10-27T05:36:52.799535+00:00",
+        "burst_altitude": 15000.0,
+        "ascent_rate": 5.0,
+        "descent_rate": 8.0,
+        "dataset": "2026-10-26T18:00:00Z"
+      },
+      "dataset": "2026-10-26T18:00:00Z",
+      "release": {
+        "altitude": 15002.03125,
+        "datetime": "2026-10-27T06:20:39.205785Z",
+        "latitude": 21.099308818914793,
+        "longitude": 258.2742412807952
+      },
+      "landing": {
+        "altitude": 1821.7740478151477,
+        "datetime": "2026-10-27T06:38:24.674535Z",
+        "latitude": 21.134620142578868,
+        "longitude": 258.36691837912286
+      },
+      "trajectoryPoints": 64,
+      "comparisonWithBaseline": {
+        "landingSeparationKm": 6.362,
+        "arrivalDifferenceMinutes": -9.391
+      }
+    }
+  ]
+}

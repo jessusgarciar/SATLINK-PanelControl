@@ -19,12 +19,14 @@ export default function CommandPanel({
   const [phrase, setPhrase] = useState('')
   const snapshot = state.snapshot!
   const demo = controller.gateway.mode === 'demo'
+  const radio = snapshot.mission.telemetryProtocol === 'radiosonda-meca-v1'
+  const flight = snapshot.mission.flightState
   const available =
     snapshot.permissions.canCommand &&
     state.connection === 'connected' &&
     (demo || Boolean(snapshot.csrfToken))
   const hasRelease = snapshot.commands.some(
-    (c) => c.type === 'RELEASE_NOW' && !['rejected', 'expired'].includes(c.status),
+    (c) => c.type === 'RELEASE_NOW' && (radio ? ['pending', 'sent', 'received'].includes(c.status) : !['rejected', 'expired'].includes(c.status)),
   )
   const disabled = state.commanding || !available
   const reason = (type: CommandType) => commandUnavailableReason(snapshot, type, now)
@@ -39,23 +41,23 @@ export default function CommandPanel({
         </span>
       </div>
       <div className="command-buttons">
-        <button
+        {!radio && <button
           className="button"
           disabled={blocked('START_MISSION')}
           title={reason('START_MISSION') ?? 'Iniciar misión y watchdog en la Heltec'}
           onClick={() => setStartOpen(true)}
         >
           {snapshot.mission.startedAt ? 'Misión iniciada' : startPending ? 'Inicio solicitado' : 'Iniciar misión'}
-        </button>
+        </button>}
         <button
           className="button"
           disabled={blocked('PING')}
           title={reason('PING') ?? undefined}
           onClick={() => void controller.sendCommand('PING')}
         >
-          PING
+          {radio ? 'MARCO' : 'PING'}
         </button>
-        <button
+        {!radio && <><button
           className="button"
           disabled={blocked('STATUS')}
           title={reason('STATUS') ?? undefined}
@@ -70,25 +72,36 @@ export default function CommandPanel({
           onClick={() => void controller.sendCommand('TELEMETRY')}
         >
           TELEM?
-        </button>
+        </button></>}
         <button
           className="button danger"
-          disabled={blocked('RELEASE_NOW') || snapshot.mission.phase !== 'ascending' || hasRelease}
+          disabled={blocked('RELEASE_NOW') || (!radio && snapshot.mission.phase !== 'ascending') || hasRelease}
           title={reason('RELEASE_NOW') ?? undefined}
           onClick={() => {
             setPhrase('')
             setConfirmOpen(true)
           }}
         >
-          RELEASE ⚡
+          {radio ? 'CORTE' : 'RELEASE ⚡'}
         </button>
       </div>
       <p className="helper-text">
         {demo
           ? 'Demostración: estos controles no envían comandos a la cápsula.'
-          : snapshot.commandSettings?.reason ?? 'Clase A · intervalo de 6 horas: el comando espera al siguiente uplink. Recibido no significa ejecutado.'}
+          : radio ? 'Clase C · lecturas cada 15 min. Marco y corte responden con uplinks; transmisión no acredita ejecución.' : snapshot.commandSettings?.reason ?? 'Clase A · intervalo de 6 horas: el comando espera al siguiente uplink. Recibido no significa ejecutado.'}
       </p>
-      {!demo && !snapshot.mission.startedAt && <p className="helper-text">El tiempo de misión y el watchdog comienzan únicamente con la ejecución confirmada de START_MISSION por la Heltec.</p>}
+      {!radio && !demo && !snapshot.mission.startedAt && <p className="helper-text">El tiempo de misión y el watchdog comienzan únicamente con la ejecución confirmada de START_MISSION por la Heltec.</p>}
+      {radio && <section className="firmware-state" aria-label="Estado autónomo del dispositivo">
+        <h3>{typeof flight?.phase === 'string' ? flight.phase : 'Sin estado recibido'}</h3>
+        <p className="helper-text">Inicio y watchdog autónomos · {flight?.watchdogActive === true ? 'despegue reportado' : 'sin despegue reportado'}.</p>
+        <dl className="mission-detail-grid">
+          {Object.entries({ 'Resultado del corte': flight?.cutResult, 'Motivo': flight?.motivo,
+            'Intento': flight?.intento, 'Tiempo de vuelo · s': flight?.tVueloS,
+            'Velocidad vertical · m/s': flight?.verticalSpeedMs, 'Última evidencia': flight?.observedAt }).map(([label, value]) =>
+            <div key={label}><dt>{label}</dt><dd>{value == null ? '—' : String(value)}</dd></div>)}
+        </dl>
+        <p className="helper-text">Secuencia terminada no acredita separación física. El resultado confirmado o sin confirmar se conserva por separado.</p>
+      </section>}
       {state.actionError && (
         <div className="inline-error" role="alert">
           {state.actionError}
@@ -112,11 +125,12 @@ export default function CommandPanel({
             <div>
               <time>[{clock(command.updatedAt)}]</time>
               <strong>{command.type}</strong>
-              <span>{statusLabels[command.status]}</span>
+              <span>{command.result?.evento === 'sin_confirmar' ? 'Secuencia sin confirmar' : statusLabels[command.status]}</span>
             </div>
             <p>{command.evidence}</p>
             <small>
-              ID: {command.id.slice(0, 8)}
+              ID: {command.id.slice(0, 8)}{command.seq != null ? ` · secuencia ${command.seq}` : ''}
+              {command.type === 'PING' && command.result && <> · RTT {String(command.result.rttSeconds ?? '—')} s · RSSI {String(command.result.rssiDbm ?? '—')} dBm · SNR {String(command.result.snrDb ?? '—')} dB</>}
               {command.simulated ? ' · SIMULADO' : ''}
             </small>
           </div>
@@ -141,7 +155,7 @@ export default function CommandPanel({
         </Dialog>
       )}
       {confirmOpen && (
-        <Dialog title="Confirmar solicitud de liberación" onClose={() => setConfirmOpen(false)}>
+        <Dialog title={radio ? "Confirmar corte de vuelo" : "Confirmar solicitud de liberación"} onClose={() => setConfirmOpen(false)}>
           <div className="dialog-body">
             <p className="tone-red">
               {demo

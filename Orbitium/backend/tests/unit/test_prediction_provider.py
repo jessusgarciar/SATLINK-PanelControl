@@ -54,3 +54,13 @@ async def test_provider_classifies_network_failure_without_automatic_retry(excep
         with pytest.raises(expected):
             await TawhiriProvider("https://predictor.test/tawhiri", client).predict(REQUEST)
     assert calls == 1
+
+
+@pytest.mark.parametrize("status", [402, 429, 503])
+async def test_http_failure_keeps_status_in_safe_message_without_leaking_response(status):
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda request: httpx.Response(status, text="private upstream body"))) as client:
+        with pytest.raises(PredictionUnavailable) as caught:
+            await TawhiriProvider("https://predictor.test/tawhiri", client).predict(REQUEST)
+        assert str(status) in str(caught.value)
+        assert "private upstream body" not in str(caught.value)

@@ -143,8 +143,9 @@ def normalize_prediction(raw: JsonObject, mission_id: str, attempt_id: str,
 
 class PredictMission:
     def __init__(self, store: PredictionStore, provider: PredictionProvider,
-                 publisher: PredictionPublisher) -> None:
+                 publisher: PredictionPublisher, *, timeout_seconds: float = 30.0) -> None:
         self.store, self.provider, self.publisher = store, provider, publisher
+        self.timeout_seconds = timeout_seconds
 
     async def execute(self, mission_id: str, parameters: JsonObject,
                       references: JsonObject, *, simulated: JsonObject | None = None) -> JsonObject:
@@ -162,6 +163,9 @@ class PredictMission:
         if mission.get("phase") in ("descending", "landed"):
             raise PredictionInvalid("El perfil estándar no actualiza descenso ni aterrizaje")
         mode = parameters["mode"]
+        if mode == "ascending":
+            references = {**references, **{key: "MSL" for key in ("launchAltitudeReference", "gpsAltitudeReference")
+                                           if parameters.get(key) == "MSL"}}
         manual_origin = parameters.get("launch") if mode == "planned" else None
         if manual_origin is not None:
             if parameters.get("launchAltitudeReference") != "MSL":
@@ -202,21 +206,27 @@ class PredictMission:
         attempt_id = await self.store.reserve_prediction(mission_id, wire, now)
         raw = None
         try:
-            async with asyncio.timeout(10):
+            async with asyncio.timeout(self.timeout_seconds):
                 raw = await self.provider.predict(wire)
                 result = normalize_prediction(raw, mission_id, attempt_id, parameters,
                                               context, datetime.now(timezone.utc), expected_request=wire)
                 if (abs(result["release"]["altitudeM"] - target) > 10 or
                         any(p["altitudeM"] > target + 10 for p in result["trajectory"])):
                     raise PredictionInvalid("El predictor no alcanzó el objetivo solicitado")
-        except (TimeoutError, PredictionTimeout) as exc:
+        except PredictionTimeout:
             await self.store.fail_prediction(attempt_id, "timeout", raw)
-            raise PredictionTimeout("Tawhiri agotó el límite total de 10 segundos") from exc
+            raise
+        except TimeoutError as exc:
+            await self.store.fail_prediction(attempt_id, "timeout", raw)
+            logger.warning("Prediction deadline exceeded: mission=%s attempt=%s limit=%gs", mission_id, attempt_id, self.timeout_seconds)
+            raise PredictionTimeout(f"El cálculo superó {self.timeout_seconds:g} segundos. Se conserva la predicción anterior.") from exc
         except asyncio.CancelledError:
             await asyncio.shield(self.store.fail_prediction(attempt_id, "cancelled", raw))
             raise
         except Exception as exc:
             await self.store.fail_prediction(attempt_id, "invalid_response" if isinstance(exc, PredictionInvalid) else "upstream_failure", raw)
+            if isinstance(exc, PredictionUnavailable):
+                raise PredictionUnavailable(f"{exc} Se conserva la predicción anterior.") from exc
             raise PredictionUnavailable("La consulta Tawhiri falló; se conserva la predicción anterior") from exc
         await self.store.complete_prediction(attempt_id, raw, result)
         try:

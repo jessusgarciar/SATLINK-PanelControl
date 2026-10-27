@@ -24,6 +24,7 @@ class ReceivedEventRow(Base):
     __tablename__ = "received_events"
     __table_args__ = (
         UniqueConstraint("source", "dev_eui", "deduplication_id", name="uq_received_event"),
+        Index("ix_received_mission_ingested_id", "mission_id", "ingested_at", "id"),
         CheckConstraint("status IN ('accepted','rejected')", name="ck_received_status"),
     )
     id: Mapped[str] = mapped_column(String(36), primary_key=True)

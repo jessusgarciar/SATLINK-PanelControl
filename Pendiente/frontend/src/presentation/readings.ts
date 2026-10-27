@@ -12,25 +12,31 @@ export function latestReadings(samples: Telemetry[], missionId: string) {
   const observedAt: Partial<Record<typeof fields[number], string>> = {}
   if (!values) return { values, observedAt }
   for (const key of fields) {
-    const source = ordered.find(s => typeof s[key] === 'number' && Number.isFinite(s[key]))
+    const source = ordered.find(s => s.packet
+      ? s.packet.presentFields?.includes(key)
+      : typeof s[key] === 'number' && Number.isFinite(s[key]))
     values = { ...values, [key]: source?.[key] ?? null }
     if (source) observedAt[key] = source.receivedAt
   }
   // Merge nested details field by field, preserving reported false and zero.
   for (const sample of [...ordered].reverse()) {
     if (sample.device) values.device = { ...values.device,
-      ...Object.fromEntries(Object.entries(sample.device).filter(([, v]) => v != null)) } as Telemetry['device']
+      ...Object.fromEntries(Object.entries(sample.device).filter(([k, v]) => sample.packet
+        ? sample.packet.presentDeviceFields?.includes(k) : v != null)) } as Telemetry['device']
     if (sample.radio) values.radio = { ...values.radio,
       ...Object.fromEntries(Object.entries(sample.radio).filter(([, v]) => v != null)) } as Telemetry['radio']
   }
   return { values, observedAt }
 }
 
+export type ChartField = keyof Telemetry | 'boardTemperatureC' | 'boardHumidityPct' | 'boardPressureHpa'
+
 /** Plot only measurements actually received; never forward-fill chart data. */
-export function telemetryPoints(samples: Telemetry[], key: keyof Telemetry, scale = 1): [number, number][] {
+export function telemetryPoints(samples: Telemetry[], key: ChartField, scale = 1): [number, number][] {
   return samples.flatMap(sample => {
     const time = Date.parse(sample.receivedAt)
-    const value = sample[key]
+    const value = key === 'boardTemperatureC' || key === 'boardHumidityPct' || key === 'boardPressureHpa'
+      ? sample.packet?.[key] : sample[key]
     return Number.isFinite(time) && typeof value === 'number' && Number.isFinite(value)
       ? [[time, value * scale] as [number, number]] : []
   }).sort((a, b) => a[0] - b[0])
